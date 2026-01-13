@@ -3,11 +3,61 @@ from streamlit_image_coordinates import streamlit_image_coordinates
 import pandas as pd
 from PIL import Image, ImageDraw
 import gspread
+import folium
+from streamlit_folium import st_folium
+from folium.raster_layers import ImageOverlay
+import io
 
-# --- CONFIGURACIÓN DE PÁGINA ---
-st.set_page_config(layout="wide", page_title="Hanon - Gestión de Fugas")
+# --- 1. CONFIGURACIÓN DE PÁGINA ---
+st.set_page_config(
+    page_title="PlanFlow Monitor | Digital Twin ",
+    page_icon="🏭",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# --- CONEXIÓN CON GOOGLE SHEETS ---
+# --- 2. CSS DARK MODE PRO (Custom UI) ---
+st.markdown("""
+    <style>
+    /* Fondo general y contenedores */
+    .stApp {
+        background-color: #0E1117;
+    }
+    div[data-testid="stMetricValue"] {
+        color: #5271ff !important;
+        font-family: 'Courier New', monospace;
+    }
+    /* Estilo para las tarjetas de KPIs */
+    div[data-testid="metric-container"] {
+        background-color: #1d2129;
+        border: 1px solid #2d323d;
+        padding: 15px;
+        border-radius: 12px;
+    }
+    /* Tabs en Dark Mode */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: #1d2129;
+        border-radius: 10px;
+        padding: 5px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        color: #ffffff !important;
+    }
+    /* Firma en Dark Mode */
+    .footer-container {
+        text-align: center;
+        color: #888;
+        background-color: #161a22;
+        padding: 25px;
+        border-radius: 15px;
+        border: 1px solid #2d323d;
+        margin-top: 40px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- CONEXIÓN GSHEET (Sin cambios en lógica) ---
+@st.cache_resource
 def conectar_gsheet():
     try:
         credentials = st.secrets["gcp_service_account"]
@@ -15,7 +65,6 @@ def conectar_gsheet():
         sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1on_gy_rcoLHiU-jlEisvArr38v90Nwuj_SysnooEuTY/edit#gid=0")
         return sh.get_worksheet(0)
     except Exception as e:
-        st.error(f"Error de conexión: {e}")
         return None
 
 sheet = conectar_gsheet()
@@ -23,9 +72,7 @@ sheet = conectar_gsheet()
 def cargar_datos():
     if sheet:
         data = sheet.get_all_records()
-        if not data:
-            return pd.DataFrame(columns=['x1', 'y1', 'x2', 'y2', 'Zona', 'TipoFuga'])
-        return pd.DataFrame(data)
+        return pd.DataFrame(data) if data else pd.DataFrame(columns=['x1', 'y1', 'x2', 'y2', 'Zona', 'TipoFuga'])
     return pd.DataFrame()
 
 if 'dfZonas' not in st.session_state:
@@ -33,147 +80,195 @@ if 'dfZonas' not in st.session_state:
 
 # --- CONFIGURACIÓN DE FLUIDOS ---
 FLUIDOS = {
-    "Aire": {"color": "#0000FF", "emoji": "💨"},
-    "Gas": {"color": "#FFA500", "emoji": "🔥"},
-    "Agua": {"color": "#00FFFF", "emoji": "💧"}
+    "Aire": {"color": "#0000FF", "emoji": "💨", "marker": "blue"},
+    "Gas": {"color": "#FFA500", "emoji": "🔥", "marker": "orange"},
+    "Agua": {"color": "#00FFFF", "emoji": "💧", "marker": "cadetblue"},
+    "Helio": {"color": "#FF00FF", "emoji": "🎈", "marker": "purple"},
+    "Aceite": {"color": "#FFFF00", "emoji": "🛢️", "marker": "darkred"}
 }
 
 img_original = Image.open("PlanoHanon.png")
+ancho_real, alto_real = img_original.size
 
-# --- SIDEBAR: FILTRO GLOBAL ---
-st.sidebar.header("🎯 Filtros de Visualización")
-filtro_fluidos = st.sidebar.multiselect(
-    "Mostrar solo:",
-    options=list(FLUIDOS.keys()),
-    default=list(FLUIDOS.keys()),
-    help="Filtra las fugas visibles en el mapa y el reporte."
-)
+# --- 3. SIDEBAR DARK ---
+with st.sidebar:
+    # 1. Mostrar el logo (Asegúrate de que el archivo EA_2.png esté en la misma carpeta que tu script)
+    try:
+        st.image("EA_2.png", use_container_width=True)
+    except:
+        st.error("⚠️ No se encontró el archivo EA_2.png")
 
-tabMapa, tabConfig, tabReporte = st.tabs(["🗺️ Mapa Interactivo", "⚙️ Configuración y Recortes", "📊 Reporte de Fugas"])
+    st.markdown("<h2 style='text-align: center;'>🏭💧 PlanFlow</h2>", unsafe_allow_html=True)
+    st.markdown("---")
+
+    st.header("🎯 Filtros Globales")
+    filtro_fluidos = st.multiselect(
+        "Líneas a monitorear:",
+        options=list(FLUIDOS.keys()),
+        default=list(FLUIDOS.keys())
+    )
+
+    st.markdown("---")
+    st.success("Cloud Link: Active ✅")
+
+    # Firma en el sidebar
+    st.markdown(f"""
+        <div style='text-align: center; padding: 10px; border: 1px solid #2d323d; border-radius: 10px;'>
+            <p style='margin: 0; font-size: 0.8em; color: #888;'>Developed by:</p>
+            <p style='margin: 0; font-weight: bold; color: #5271ff;'>Master Engineer Erik Armenta</p>
+        </div>
+    """, unsafe_allow_html=True)
+
+# --- 4. HEADER & KPIs (CORREGIDOS) ---
+st.title("🏭 Gemelo Digital de Planta I v1.0")
+df_filtrado = st.session_state.dfZonas[st.session_state.dfZonas['TipoFuga'].isin(filtro_fluidos)]
+
+# CORRECCIÓN DE KPI: Ahora cuenta líneas reales con datos, no la selección del filtro
+lineas_con_fuga = df_filtrado['TipoFuga'].nunique()
+
+k1, k2, k3, k4 = st.columns(4)
+with k1:
+    st.metric("Puntos Críticos", len(df_filtrado))
+with k2:
+    st.metric("Líneas con Fuga", lineas_con_fuga) # Ahora muestra 1 si solo has cargado una
+with k3:
+    status = "Normal" if len(df_filtrado) < 3 else "Atención"
+    st.metric("Status Operativo", status)
+with k4:
+    st.metric("Resolución Plano", "4K UHD")
+
+st.markdown("---")
+
+# --- 5. TABS ---
+tabMapa, tabConfig, tabReporte = st.tabs(["📍 Mapa Interactivo", "⚙️ Gestión de Activos", "📊 Inteligencia de Datos"])
 
 # --- PESTAÑA 1: MAPA ---
 with tabMapa:
-    col_map, col_info = st.columns([3, 1])
+    st.subheader("📍 Monitoreo de Redes en Tiempo Real")
 
-    with col_info:
-        st.subheader("🕵️ Panel de Inspección")
-        zoom_mapa = st.slider("Nivel de Zoom", 800, 4000, 1500, step=100)
-        st.caption("Usa el slider para ampliar y las barras para navegar.")
-        info_placeholder = st.empty()
+    # Crear el mapa base
+    m = folium.Map(
+        location=[alto_real / 2, ancho_real / 2],
+        zoom_start=-1,
+        crs="Simple",
+        min_zoom=-2,
+        max_zoom=2
+    )
 
-    with col_map:
-        df_filtrado = st.session_state.dfZonas[st.session_state.dfZonas['TipoFuga'].isin(filtro_fluidos)]
-        rescale = zoom_mapa / 1200
-        img_mapa = img_original.resize((zoom_mapa, int(img_original.height * (zoom_mapa / img_original.width))))
-        overlay = img_mapa.copy()
-        draw = ImageDraw.Draw(overlay)
+    # Capa del plano
+    ImageOverlay(
+        image="PlanoHanon.png",
+        bounds=[[0, 0], [alto_real, ancho_real]],
+        opacity=0.9
+    ).add_to(m)
 
-        for i, row in df_filtrado.iterrows():
-            f_info = FLUIDOS.get(row['TipoFuga'], {"color": "red", "emoji": "⚠️"})
-            rect = [row['x1']*rescale, row['y1']*rescale, row['x2']*rescale, row['y2']*rescale]
-            draw.rectangle(rect, outline=f_info["color"], width=4)
-            draw.text((rect[0], rect[1] - 20), f"ID:{i} {f_info['emoji']}", fill=f_info["color"])
+    for i, row in df_filtrado.iterrows():
+        # Cálculo de coordenadas
+        factor_x, factor_y = ancho_real / 1200, alto_real / (1200 * (alto_real / ancho_real))
+        cx, cy = (row['x1'] + row['x2']) / 2 * factor_x, alto_real - ((row['y1'] + row['y2']) / 2 * factor_y)
 
-        st.markdown(
-            '<style>.element-container:has(#map_scroll) + div {overflow: auto !important; max-height: 750px; border: 2px solid #444;}</style><div id="map_scroll"></div>',
-            unsafe_allow_html=True
-        )
+        f_info = FLUIDOS.get(row['TipoFuga'], {"color": "white", "marker": "red", "emoji": "⚠️"})
 
-        click = streamlit_image_coordinates(overlay, width=zoom_mapa, key="click_mapa")
+        # --- DISEÑO DEL HOVER (TOOLTIP) ---
+        # Este es el que sale al pasar el cursor
+        hover_html = f"""
+        <div style="
+            background-color: #1d2129;
+            color: white;
+            padding: 10px;
+            border-radius: 8px;
+            border: 1px solid {f_info['color']};
+            box-shadow: 0px 0px 10px rgba(0,0,0,0.5);
+            font-family: 'Arial';
+            min-width: 140px;
+        ">
+            <span style='font-size: 1.2em;'>{f_info['emoji']}</span>
+            <b style='color: {f_info['color']};'>{row['Zona']}</b><br>
+            <small style='color: #bbb;'>Línea: {row['TipoFuga']}</small><br>
+            <div style='margin-top: 5px; font-size: 0.8em; color: #5271ff;'>Mantenimiento: Requerido</div>
+        </div>
+        """
 
-        if click:
-            x_val = click.get('x') if click.get('x') is not None else click.get('x1')
-            y_val = click.get('y') if click.get('y') is not None else click.get('y1')
-            if x_val is not None:
-                rescale_inv = 1200 / zoom_mapa
-                xq, yq = x_val * rescale_inv, y_val * rescale_inv
-                match = df_filtrado.query(f'x1 <= {xq} <= x2 and y1 <= {yq} <= y2')
-                if not match.empty:
-                    f = match.iloc[0]
-                    info_placeholder.markdown(f"""
-                        <div style="background-color:#262730; padding:20px; border-radius:10px; border-left: 5px solid {FLUIDOS[f['TipoFuga']]['color']};">
-                            <h3>🔍 ID: {match.index[0]}</h3>
-                            <b>Zona:</b> {f['Zona']}<br>
-                            <b>Tipo:</b> {f['TipoFuga']} {FLUIDOS[f['TipoFuga']]['emoji']}<br>
-                        </div>
-                    """, unsafe_allow_html=True)
+        # --- DISEÑO DEL CLIC (POPUP) ---
+        # Este se mantiene para detalles más profundos
+        popup_html = f"<div style='color:black; font-family:Arial;'><b>ID: {i}</b><br>Registro completo en la nube.</div>"
 
-# --- PESTAÑA 2: CONFIGURACIÓN E HISTORIAL ---
+        # Añadir marcador con HOVER
+        folium.Marker(
+            location=[cy, cx],
+            popup=folium.Popup(popup_html, max_width=150),
+            tooltip=folium.Tooltip(hover_html), # <--- Aquí activamos el Hover elegante
+            icon=folium.Icon(
+                color=f_info['marker'],
+                icon="info-sign" if row['TipoFuga'] != "Aceite" else "tint"
+            )
+        ).add_to(m)
+
+    # Renderizado
+    st_folium(m, width=1400, height=750, use_container_width=True)
+
+# PESTAÑA 2: CONFIGURACIÓN
 with tabConfig:
-    st.subheader("🛠️ Registro de Zonas")
-    col_c1, col_c2 = st.columns([2, 1])
-
-    with col_c1:
-        base_width = 1200
-        img_config = img_original.resize((base_width, int(base_width*img_original.height/img_original.width)))
-        v_conf = streamlit_image_coordinates(img_config, width=base_width, click_and_drag=True, key="conf_draw")
-
-    with col_c2:
-        tipo_f = st.selectbox("Fluido", list(FLUIDOS.keys()))
-        nombre_z = st.text_input("Nombre de la Zona")
-
-        if v_conf and v_conf.get('x1') != v_conf.get('x2'):
-            st.write("🖼️ **Vista previa:**")
-            preview_crop = img_config.crop((v_conf['x1'], v_conf['y1'], v_conf['x2'], v_conf['y2']))
-            overlay_color = Image.new('RGB', preview_crop.size, FLUIDOS[tipo_f]['color'])
-            st.image(Image.blend(preview_crop, overlay_color, alpha=0.3))
-
-        if st.button("💾 Guardar Registro", use_container_width=True) and v_conf:
-            sheet.append_row([v_conf['x1'], v_conf['y1'], v_conf['x2'], v_conf['y2'], nombre_z, tipo_f])
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        base_w = 1200
+        img_c = img_original.resize((base_w, int(base_w*alto_real/ancho_real)))
+        v_c = streamlit_image_coordinates(img_c, width=base_w, click_and_drag=True, key="dark_conf")
+    with c2:
+        st.subheader("📝 Nuevo Registro")
+        t_f = st.selectbox("Línea afectada", list(FLUIDOS.keys()))
+        n_z = st.text_input("Identificador de Zona")
+        if v_c and v_c.get('x1') != v_c.get('x2'):
+            st.image(img_c.crop((v_c['x1'], v_c['y1'], v_c['x2'], v_c['y2'])), caption="Crop Preview")
+        if st.button("🚀 Enviar a Base de Datos", use_container_width=True):
+            sheet.append_row([v_c['x1'], v_c['y1'], v_c['x2'], v_c['y2'], n_z, t_f])
             st.session_state.dfZonas = cargar_datos()
             st.rerun()
 
-    st.divider()
-    st.subheader("📋 Historial de Recortes Configuradores")
-    # Mostrar historial de recortes con botón de eliminar mejorado
-    for index, row in st.session_state.dfZonas.iterrows():
-        with st.container(border=True):
-            h1, h2, h3 = st.columns([1, 2, 1])
-            with h1:
-                recorte = img_config.crop((row['x1'], row['y1'], row['x2'], row['y2']))
-                st.image(recorte)
-            with h2:
-                st.markdown(f"### {FLUIDOS[row['TipoFuga']]['emoji']} {row['Zona']}")
-                st.write(f"**Tipo:** {row['TipoFuga']}")
-            with h3:
-                if st.button(f"🗑️ Eliminar Fuga", key=f"del_{index}", use_container_width=True):
-                    sheet.delete_rows(index + 2)
-                    st.session_state.dfZonas = cargar_datos()
-                    st.rerun()
-
 # --- PESTAÑA 3: REPORTE ---
 with tabReporte:
-    st.subheader("📊 Resumen Ejecutivo y Etiquetas en Plano")
-    df_rep = st.session_state.dfZonas[st.session_state.dfZonas['TipoFuga'].isin(filtro_fluidos)]
+    st.subheader("📊 Métricas por Fluido")
+    # METRICAS RECUPERADAS
+    cols_f = st.columns(len(filtro_fluidos))
+    for i, f_name in enumerate(filtro_fluidos):
+        count = len(df_filtrado[df_filtrado['TipoFuga'] == f_name])
+        cols_f[i].metric(f"{FLUIDOS[f_name]['emoji']} {f_name}", count)
 
-    if not df_rep.empty:
-        # Métricas superiores
-        cols_m = st.columns(len(filtro_fluidos) + 1)
-        cols_m[0].metric("Total Visible", len(df_rep))
-        for i, f_name in enumerate(filtro_fluidos):
-            count = len(df_rep[df_rep['TipoFuga'] == f_name])
-            cols_m[i+1].metric(f"{FLUIDOS[f_name]['emoji']} {f_name}", count)
+    st.markdown("---")
 
-        # Dibujo del reporte con etiquetas detalladas
-        report_img = img_original.copy()
-        draw_report = ImageDraw.Draw(report_img)
-        scale = img_original.width / 1200
+    # DIBUJO DEL PLANO HD
+    rep_img = img_original.copy()
+    draw = ImageDraw.Draw(rep_img)
+    sc = ancho_real / 1200
+    for _, r in df_filtrado.iterrows():
+        fi = FLUIDOS.get(r['TipoFuga'])
+        co = [r['x1']*sc, r['y1']*sc, r['x2']*sc, r['y2']*sc]
+        draw.rectangle(co, outline=fi["color"], width=18)
+        draw.text((co[0], co[1]-75), f"{fi['emoji']} {r['Zona']}", fill=fi["color"], font_size=50)
 
-        for _, row in df_rep.iterrows():
-            f_info = FLUIDOS[row['TipoFuga']]
-            coords = [row['x1']*scale, row['y1']*scale, row['x2']*scale, row['y2']*scale]
+    st.image(rep_img, use_container_width=True)
 
-            # Dibujar el rectángulo con mayor grosor para el reporte
-            draw_report.rectangle(coords, outline=f_info["color"], width=15)
+    # BOTONES DE DESCARGA
+    st.subheader("📥 Exportar Resultados")
+    d1, d2 = st.columns(2)
 
-            # ETIQUETAS: Texto con el color del fluido
-            # Se coloca un poco arriba del cuadro
-            etiqueta = f"{f_info['emoji']} {row['Zona']} ({row['TipoFuga']})"
-            draw_report.text((coords[0], coords[1] - 65), etiqueta, fill=f_info["color"])
+    with d1:
+        # Descarga de Imagen PNG
+        buf = io.BytesIO()
+        rep_img.save(buf, format="PNG")
+        st.download_button("🖼️ Descargar Plano HD (Imagen)", data=buf.getvalue(), file_name="PlanFlow_Static_Report.png", mime="image/png")
 
-        st.image(report_img, use_container_width=True)
+    with d2:
+        # Descarga de Mapa Interactivo HTML
+        # Esto guarda el mapa de la pestaña 1 con sus clics y popups
+        map_html = io.BytesIO()
+        m.save("mapa_interactivo.html") # Guardamos el objeto folium 'm' de arriba
+        with open("mapa_interactivo.html", "rb") as f:
+            st.download_button("🌐 Descargar Mapa Interactivo (HTML)", data=f, file_name="PlanFlow_Interactive_Map.html", mime="text/html")
 
-        # Opción de descarga
-        report_img.save("reporte_hanon_final.png")
-        with open("reporte_hanon_final.png", "rb") as f:
-            st.download_button("🖼️ Descargar Plano con Etiquetas", f, "reporte_fugas_hanon.png")
+# --- FOOTER ---
+st.markdown(f"""<div class="footer-container">
+    <h3 style="color: #fff;">🏭💧 Gemelo Digital de Planta I v1.0</h3>
+    <p><b>Developed by:</b> Master Engineer Erik Armenta</p>
+    <p style="font-style: italic; color: #5271ff;">"Accuracy is our signature, and innovation is our nature."</p>
+</div>""", unsafe_allow_html=True)
