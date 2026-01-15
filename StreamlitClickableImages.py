@@ -83,7 +83,7 @@ ancho_real, alto_real = img_original.size
 with st.sidebar:
     try: st.image("EA_2.png", use_container_width=True)
     except: st.error("Logo no encontrado")
-    st.markdown("<h2 style='text-align: center;'>🏭 PlanFlow</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center;'>🏭 Leak hunter</h2>", unsafe_allow_html=True)
     filtro_fluidos = st.multiselect("Monitorear:", list(FLUIDOS.keys()), default=list(FLUIDOS.keys()))
     st.success("Conexión: Cloud Sync ✅")
     
@@ -362,4 +362,5 @@ st.markdown(f"""<div style="text-align: center; color: #888; background-color: #
     <p><b>Developed by:</b> Master Engineer Erik Armenta</p>
     <p style="font-style: italic; color: #5271ff;">"Accuracy is our signature, and innovation is our nature."</p>
 </div>""", unsafe_allow_html=True)
+
 
