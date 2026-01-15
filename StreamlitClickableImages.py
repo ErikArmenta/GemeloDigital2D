@@ -12,7 +12,7 @@ import altair as alt
 
 # --- 1. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="PlanFlow Monitor | Digital Twin",
+    page_title="Leak hunter | Digital Twin",
     page_icon="🏭",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -362,3 +362,4 @@ st.markdown(f"""<div style="text-align: center; color: #888; background-color: #
     <p><b>Developed by:</b> Master Engineer Erik Armenta</p>
     <p style="font-style: italic; color: #5271ff;">"Accuracy is our signature, and innovation is our nature."</p>
 </div>""", unsafe_allow_html=True)
+
