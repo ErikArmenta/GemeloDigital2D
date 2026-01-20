@@ -79,6 +79,8 @@ def editar_registro(index, datos_actuales):
 
         nuevo_costo = dict_edit[nueva_cat]["costo"]
         st.text_input("Costo por año (USD)", value=str(nuevo_costo), disabled=True)
+        ubi_index = 0 if datos_actuales.get('Ubicacion') == "Terrestre" else 1
+        nueva_ubi = st.radio("Tipo de Instalación", ["Terrestre", "Aérea"], index=ubi_index, horizontal=True)
 
         nuevo_estado = st.selectbox("Estado", ["En proceso de reparar", "Dañada", "Completada"],
                                   index=["En proceso de reparar", "Dañada", "Completada"].index(datos_actuales.get('Estado', 'Dañada')) if datos_actuales.get('Estado') in ["En proceso de reparar", "Dañada", "Completada"] else 1)
@@ -199,7 +201,7 @@ with tabMapa:
         opacity=0.8
     ).add_to(m)
 
-    # --- 4. RENDERIZADO DE MARCADORES ---
+# --- 4. RENDERIZADO DE MARCADORES ---
     for i, row in df_filtrado.iterrows():
         factor_x, factor_y = ancho_real / 1200, alto_real / (1200 * (alto_real / ancho_real))
         cx, cy = (row['x1'] + row['x2']) / 2 * factor_x, alto_real - ((row['y1'] + row['y2']) / 2 * factor_y)
@@ -207,19 +209,25 @@ with tabMapa:
         f_info = FLUIDOS.get(row['TipoFuga'], {"color": "white", "marker": "red", "emoji": "⚠️"})
         color_sev = {"Alta": "#FF4B4B", "Media": "#FFA500", "Baja": "#28A745"}.get(row['Severidad'], "#333")
 
-        # Tooltip Elegante
+        # --- LÓGICA DE UBICACIÓN ---
+        ubi = row.get('Ubicacion', 'Terrestre') # 'Ubicacion' debe ser el nombre de tu columna en GSheets
+        ubi_emoji = "🚜" if ubi == "Terrestre" else "☁️"
+
+        # Tooltip Elegante (Actualizado con Ubicación)
         hover_html = f"""
         <div style="background-color:#1d2129; color:white; padding:10px; border-radius:8px; border-left:5px solid {f_info['color']}; min-width:150px;">
             <b>{f_info['emoji']} {row['Zona']}</b><br>
+            <span style="color:#bdc3c7; font-size:0.85em;">{ubi_emoji} Instalación: {ubi}</span><br>
             <span style="color:{color_sev}; font-size:0.9em;">Prioridad: {row['Severidad']}</span>
         </div>"""
 
-        # Popup con Formulario Completo
+        # Popup con Formulario Completo (Actualizado con Fila de Ubicación)
         popup_content = f"""
         <div style="font-family: 'Segoe UI', sans-serif; color: #333; min-width: 250px;">
             <h4 style="margin:0 0 10px 0; color:{f_info['color']}; border-bottom: 2px solid {color_sev};">📋 Ficha Técnica</h4>
             <table style="width:100%; font-size: 13px; border-spacing: 0 5px;">
                 <tr><td><b>Zona:</b></td><td>{row['Zona']}</td></tr>
+                <tr><td><b>Instalación:</b></td><td>{ubi_emoji} {ubi}</td></tr>
                 <tr><td><b>Estado:</b></td><td><b>{row.get('Estado', 'N/A')}</b></td></tr>
                 <tr><td><b>Categoría:</b></td><td>{row.get('Categoria', 'N/A')}</td></tr>
                 <tr><td><b>Caudal:</b></td><td>{row.get('L_min', 'N/A')} I/min</td></tr>
@@ -279,13 +287,13 @@ with tabConfig:
     )
     draw.add_to(m2)
 
-        # Renderizar el mapa con ancho completo
-    output = st_folium(
-        m2,
-        width=1400, # Ajusta este valor según tu pantalla, 1400 suele cubrir el layout "wide"
-        height=600,
-        use_container_width=True # Esta opción es clave para que intente llenar el contenedor
-    )
+    # # Renderizar el mapa con ancho completo
+    # output = st_folium(
+    #     m2,
+    #     width=1400, # Ajusta este valor según tu pantalla, 1400 suele cubrir el layout "wide"
+    #     height=600,
+    #     use_container_width=True # Esta opción es clave para que intente llenar el contenedor
+    # )
 
     # Capturamos la salida del mapa con dibujo
     output = st_folium(m2, width=1200, height=600, key="draw_map")
@@ -371,6 +379,7 @@ with tabConfig:
 
         cost_f = dict_actual[cat_f]["costo"]
         st.selectbox("Costo por año (USD)", [cost_f], index=0, disabled=True)
+        tipo_ubicacion = st.radio("Tipo de Instalación", ["Terrestre", "Aérea"], horizontal=True)
         est_f = st.selectbox("Estado Inicial", ["En proceso de reparar", "Dañada", "Completada"], index=1)
 
     if st.button("🚰📝 Record leak", use_container_width=True):
