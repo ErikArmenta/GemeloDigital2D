@@ -279,6 +279,14 @@ with tabConfig:
     )
     draw.add_to(m2)
 
+        # Renderizar el mapa con ancho completo
+    output = st_folium(
+        m2,
+        width=1400, # Ajusta este valor según tu pantalla, 1400 suele cubrir el layout "wide"
+        height=600,
+        use_container_width=True # Esta opción es clave para que intente llenar el contenedor
+    )
+
     # Capturamos la salida del mapa con dibujo
     output = st_folium(m2, width=1200, height=600, key="draw_map")
 
@@ -488,5 +496,6 @@ st.markdown(f"""<div style="text-align: center; color: #888; background-color: #
     <p><b>Developed by:</b> Master Engineer Erik Armenta</p>
     <p style="font-style: italic; color: #5271ff;">"Accuracy is our signature, and innovation is our nature."</p>
 </div>""", unsafe_allow_html=True)
+
 
 
