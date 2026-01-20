@@ -57,23 +57,29 @@ def editar_registro(index, datos_actuales):
     st.write(f"Modificando ID: {index}")
     col_ed1, col_ed2 = st.columns(2)
 
+    # Identificamos qué fluido tiene este registro
+    fluido_reg = datos_actuales.get('TipoFuga', 'Aire')
+    dict_edit = RELACION_FUGAS.get(fluido_reg, RELACION_FUGAS["Aire"])
+    cat_list_edit = list(dict_edit.keys())
+
     with col_ed1:
         nuevo_n = st.text_input("Nombre Zona", value=str(datos_actuales['Zona']))
-        # Selector Maestro en Edición
         cat_val = datos_actuales.get('Categoria', 'Fuga A')
-        nueva_cat = st.selectbox("Categoría", categorias_list,
-                               index=categorias_list.index(cat_val) if cat_val in categorias_list else 0)
-        idx_ed = categorias_list.index(nueva_cat)
 
-        # Bloqueado
-        nueva_medida = st.selectbox("I/min", medidas_list, index=idx_ed, disabled=True)
+        # Validamos que la categoría exista para ese fluido
+        idx_ed = cat_list_edit.index(cat_val) if cat_val in cat_list_edit else 0
+        nueva_cat = st.selectbox("Categoría", cat_list_edit, index=idx_ed)
+
+        nueva_medida = dict_edit[nueva_cat]["l_min"]
+        st.text_input("I/min", value=nueva_medida, disabled=True)
 
     with col_ed2:
         nuevo_a = st.text_input("Área", value=str(datos_actuales.get('Area', 'N/A')))
         nueva_sev = st.select_slider("Severidad", options=["Baja", "Media", "Alta"], value=datos_actuales.get('Severidad', 'Media'))
 
-        # Bloqueado
-        nuevo_costo = st.selectbox("Costo por año (USD)", costos_list, index=idx_ed, disabled=True)
+        nuevo_costo = dict_edit[nueva_cat]["costo"]
+        st.text_input("Costo por año (USD)", value=str(nuevo_costo), disabled=True)
+
         nuevo_estado = st.selectbox("Estado", ["En proceso de reparar", "Dañada", "Completada"],
                                   index=["En proceso de reparar", "Dañada", "Completada"].index(datos_actuales.get('Estado', 'Dañada')) if datos_actuales.get('Estado') in ["En proceso de reparar", "Dañada", "Completada"] else 1)
 
@@ -91,18 +97,26 @@ def editar_registro(index, datos_actuales):
         st.rerun()
 
 # --- 4. CONFIGURACIÓN VISUAL ---
-# --- Configuarcion de formulas de categorias ---
+# --- Configuarcion de formulas de categorias por fluido ---
 RELACION_FUGAS = {
-    "Fuga A": {"l_min": "0.1-10", "costo": 60},
-    "Fuga B": {"l_min": "10.1-20", "costo": 300},
-    "Fuga C": {"l_min": "20.1-30", "costo": 680},
-    "Fuga D": {"l_min": "30.1-40", "costo": 890},
-    "Fuga E": {"l_min": "40.1-50", "costo": 1090},
+    "Aire": {
+        "Fuga A": {"l_min": "0.1-10", "costo": 60},
+        "Fuga B": {"l_min": "10.1-20", "costo": 300},
+        "Fuga C": {"l_min": "20.1-30", "costo": 680},
+        "Fuga D": {"l_min": "30.1-40", "costo": 890},
+        "Fuga E": {"l_min": "40.1-50", "costo": 1090},
+    },
+    "Helio": {
+        "Fuga A": {"l_min": "0.1-17", "costo": 220200},
+        "Fuga B": {"l_min": "17.1-32", "costo": 849895},
+        "Fuga C": {"l_min": "33.1-50", "costo": 1493755},
+    }
 }
 
-categorias_list = list(RELACION_FUGAS.keys())
-medidas_list = [v["l_min"] for v in RELACION_FUGAS.values()]
-costos_list = [v["costo"] for v in RELACION_FUGAS.values()]
+# Definimos listas iniciales basadas en "Aire" para evitar el KeyError al cargar
+categorias_list = list(RELACION_FUGAS["Aire"].keys())
+medidas_list = [v["l_min"] for v in RELACION_FUGAS["Aire"].values()]
+costos_list = [v["costo"] for v in RELACION_FUGAS["Aire"].values()]
 
 FLUIDOS = {
     "Aire": {"color": "#0000FF", "emoji": "💨", "marker": "blue"},
@@ -326,22 +340,29 @@ with tabConfig:
     # --- REEMPLAZAR EN TAB_CONFIG ---
     col1, col2, col3 = st.columns(3)
     with col1:
-        t_f = st.selectbox("Fluido", list(FLUIDOS.keys()))
-        n_z = st.text_input("Nombre de la Zona")
-        # Selector Maestro
-        cat_f = st.selectbox("Categoría Critica", categorias_list)
-        idx_sincro = categorias_list.index(cat_f)
+            t_f = st.selectbox("Fluido", list(FLUIDOS.keys()))
+            n_z = st.text_input("Nombre de la Zona")
+
+            # Seleccionamos el diccionario según el fluido (si no es Helio, usa Aire por defecto)
+            dict_actual = RELACION_FUGAS.get(t_f, RELACION_FUGAS["Aire"])
+            cat_list_dinamica = list(dict_actual.keys())
+
+            cat_f = st.selectbox("Categoría Critica", cat_list_dinamica)
+            idx_sincro = cat_list_dinamica.index(cat_f)
 
     with col2:
         id_m = st.text_input("ID Equipo / Máquina")
         area_p = st.text_input("Área Planta")
-        # Selector Bloqueado (se mueve solo)
-        med_f = st.selectbox("I/min (Estimación)", medidas_list, index=idx_sincro, disabled=True)
+
+        # Estos valores se actualizan solos al cambiar el fluido o la categoría
+        med_f = dict_actual[cat_f]["l_min"]
+        st.selectbox("I/min (Estimación)", [med_f], index=0, disabled=True)
 
     with col3:
         sev_p = st.select_slider("Severidad Visual", options=["Baja", "Media", "Alta"], value="Media")
-        # Selector Bloqueado (se mueve solo)
-        cost_f = st.selectbox("Costo por año (USD)", costos_list, index=idx_sincro, disabled=True)
+
+        cost_f = dict_actual[cat_f]["costo"]
+        st.selectbox("Costo por año (USD)", [cost_f], index=0, disabled=True)
         est_f = st.selectbox("Estado Inicial", ["En proceso de reparar", "Dañada", "Completada"], index=1)
 
     if st.button("🚰📝 Record leak", use_container_width=True):
@@ -374,74 +395,92 @@ with tabConfig:
                 if st.button("🗑️", key=f"del_{idx}"): sheet.delete_rows(idx+2); st.session_state.dfZonas = cargar_datos(); st.rerun()
 
 with tabReporte:
-    st.subheader("📊 Análisis Operativo y de Mantenimiento")
+    st.subheader("📊 Panel de Control Operativo")
+
+    # --- TODO DENTRO DE ESTE IF ---
     if not df_filtrado.empty:
-        # Fila superior con dos gráficas
-        col_g1, col_g2, col_g3 = st.columns(3)
+        # 1. PREPARACIÓN DE DATOS
+        df_filtrado['CostoAnual'] = pd.to_numeric(df_filtrado['CostoAnual'], errors='coerce').fillna(0)
 
-        with col_g1:
-            st.markdown("##### Conteo por Severidad")
-            chart = alt.Chart(df_filtrado).mark_bar().encode(
-                x=alt.X('Severidad:N', sort=['Baja', 'Media', 'Alta'], title="Severidad"),
-                y=alt.Y('count():Q', title="Cantidad"),
-                color=alt.Color('TipoFuga:N', scale=alt.Scale(domain=list(FLUIDOS.keys()),
-                                                             range=[f['color'] for f in FLUIDOS.values()])),
-                tooltip=['TipoFuga', 'Severidad', 'count()']
-            ).properties(height=300).interactive()
-            st.altair_chart(chart, use_container_width=True)
+        df_reparacion = df_filtrado.copy()
+        df_reparacion['Eficiencia'] = df_reparacion['Estado'].apply(
+            lambda x: 'Reparada' if x == 'Completada' else 'Pendiente'
+        )
+        total = len(df_reparacion)
+        reparadas = len(df_reparacion[df_reparacion['Eficiencia'] == 'Reparada'])
+        porcentaje = (reparadas / total * 100) if total > 0 else 0
 
-        with col_g2:
-            st.markdown("##### Estatus de Reparación")
-            # Gráfica de barras horizontales para el Estado
-            chart_estado = alt.Chart(df_filtrado).mark_bar().encode(
-                y=alt.Y('Estado:N', title="Estado Actual", sort='-x'),
-                x=alt.X('count():Q', title="Número de Activos"),
-                color=alt.Color('Estado:N', scale=alt.Scale(
-                    domain=['Dañada', 'En proceso de reparar', 'Completada'],
-                    range=['#d9534f', '#f0ad4e', '#5cb85c'] # Rojo, Naranja, Verde
-                )),
-                tooltip=['Estado', 'count()']
-            ).properties(height=300).interactive()
-            st.altair_chart(chart_estado, use_container_width=True)
+        # 2. DEFINICIÓN DE GRÁFICAS (G1, G2, G3, G4)
+        g1 = alt.Chart(df_filtrado).mark_bar().encode(
+            x=alt.X('Severidad:N', sort=['Baja', 'Media', 'Alta'], title="Prioridad"),
+            y=alt.Y('count():Q', title="Cantidad"),
+            color=alt.Color('TipoFuga:N', scale=alt.Scale(domain=list(FLUIDOS.keys()),
+                                                         range=[f['color'] for f in FLUIDOS.values()]), legend=None),
+            tooltip=['TipoFuga', 'count()']
+        ).properties(width=180, height=250, title="Severidad")
 
+        g2 = alt.Chart(df_filtrado).mark_bar().encode(
+            y=alt.Y('Estado:N', sort='-x', title=None),
+            x=alt.X('count():Q', title="Fugas"),
+            color=alt.Color('Estado:N', scale=alt.Scale(domain=['Dañada', 'En proceso de reparar', 'Completada'],
+                                                       range=['#d9534f', '#f0ad4e', '#5cb85c']), legend=None),
+            tooltip=['Estado', 'count()']
+        ).properties(width=180, height=250, title="Estatus")
 
-        with col_g3:
-            st.markdown("##### Impacto Económico por Categoría")
-            # NUEVA GRÁFICA: Costo acumulado por Categoría (A-E)
-            # Aseguramos que CostoAnual sea numérico para la gráfica
-            df_filtrado['CostoAnual'] = pd.to_numeric(df_filtrado['CostoAnual'], errors='coerce').fillna(0)
+        g3 = alt.Chart(df_filtrado).mark_bar(color="#d9534f").encode(
+            x=alt.X('Categoria:N', title="Cat"),
+            y=alt.Y('sum(CostoAnual):Q', title="USD"),
+            tooltip=['Categoria', 'sum(CostoAnual)']
+        ).properties(width=180, height=250, title="Impacto ($)")
 
-            chart_costo = alt.Chart(df_filtrado).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
-                x=alt.X('Categoria:N', sort=['Fuga A', 'Fuga B', 'Fuga C', 'Fuga D', 'Fuga E'], title="Categoría de Fuga"),
-                y=alt.Y('sum(CostoAnual):Q', title="Costo Total Acumulado (USD)"),
-                color=alt.value("#d9534f"), # Color rojo industrial para representar gasto
-                tooltip=['Categoria', 'sum(CostoAnual)']
-            ).properties(height=350).interactive()
-            st.altair_chart(chart_costo, use_container_width=True)
+        base_anillo = alt.Chart(df_reparacion).encode(
+            theta=alt.Theta("Eficiencia:N", aggregate="count"),
+            color=alt.Color("Eficiencia:N", scale=alt.Scale(domain=['Reparada', 'Pendiente'],
+                                                           range=['#5cb85c', '#d9534f']), legend=None)
+        )
+        anillo = base_anillo.mark_arc(innerRadius=45)
+        texto = alt.Chart(pd.DataFrame({'t': [f'{porcentaje:.0f}%']})).mark_text(fontSize=20, fontWeight='bold', color='white').encode(text='t:N')
+        g4 = (anillo + texto).properties(width=180, height=250, title="Eficiencia")
 
-        # Plano con rectángulos de severidad
+        # 3. RENDERIZADO DASHBOARD
+        dashboard_unificado = alt.hconcat(g1, g2, g3, g4).configure_view(stroke=None).configure_concat(spacing=30)
+        st.altair_chart(dashboard_unificado, use_container_width=True)
+
+        # 4. PLANO DE RIESGOS (BAJADO)
+        st.markdown("---")
+        st.markdown("#### 🗺️ Ubicación Física de Hallazgos")
         rep_img = img_original.copy()
         draw = ImageDraw.Draw(rep_img)
         sc = ancho_real / 1200
         for _, r in df_filtrado.iterrows():
-            color_hex = FLUIDOS.get(r['TipoFuga'])['color']
+            color_hex = FLUIDOS.get(r['TipoFuga'], {"color": "#FFFFFF"})['color']
             co = [r['x1']*sc, r['y1']*sc, r['x2']*sc, r['y2']*sc]
-            draw.rectangle(co, outline=color_hex, width=20)
+            draw.rectangle(co, outline=color_hex, width=25)
+
         st.image(rep_img, caption="Vista de Riesgos en Planta", use_container_width=True)
 
-        # --- BOTONES DE DESCARGA RESTAURADOS ---
-        st.subheader("📥 Exportar")
-        d1, d2 = st.columns(2)
-        with d1:
+        # 5. BOTONES DE DESCARGA (TODOS JUNTOS)
+        st.subheader("📥 Exportar Reportes")
+        d_col1, d_col2, d_col3 = st.columns(3)
+
+        with d_col1:
+            csv = df_filtrado.to_csv(index=False).encode('utf-8')
+            st.download_button("📊 Datos (CSV)", data=csv, file_name="Reporte_Fugas.csv", mime="text/csv", use_container_width=True)
+
+        with d_col2:
             buf = io.BytesIO()
             rep_img.save(buf, format="PNG")
-            st.download_button("🖼️ Bajar Imagen PNG", data=buf.getvalue(), file_name="Reporte_HunterLeak.png", mime="image/png")
-        with d2:
+            st.download_button("🖼️ Imagen PNG", data=buf.getvalue(), file_name="Mapa_Riesgos.png", mime="image/png", use_container_width=True)
+
+        with d_col3:
+            # Aquí asumimos que el objeto 'm' (folium) ya fue creado arriba
             m.save("mapa_interactivo.html")
             with open("mapa_interactivo.html", "rb") as f:
-                st.download_button("🗺️📍 Interactive map", data=f, file_name="Mapa_Hunter_Leak.html", mime="text/html")
+                st.download_button("🗺️ Mapa HTML", data=f, file_name="Mapa_Interactivo.html", mime="text/html", use_container_width=True)
+
     else:
-        st.info("Filtra algún fluido para ver el reporte.")
+        # SOLO UN ELSE AL FINAL
+        st.info("Filtra algún fluido en el menú lateral para ver el reporte.")
 
 # --- FOOTER CON FIRMA ---
 st.markdown(f"""<div style="text-align: center; color: #888; background-color: #161a22; padding: 25px; border-radius: 15px; border: 1px solid #2d323d; margin-top: 40px;">
