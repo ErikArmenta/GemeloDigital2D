@@ -9,6 +9,9 @@ from streamlit_folium import st_folium
 from folium.raster_layers import ImageOverlay
 import io
 import altair as alt
+from datetime import datetime
+
+
 
 # --- 1. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -137,6 +140,21 @@ with st.sidebar:
     except: st.error("Logo no encontrado")
     st.markdown("<h2 style='text-align: center;'>🏭 Leak Hunter</h2>", unsafe_allow_html=True)
     filtro_fluidos = st.multiselect("Monitorear:", list(FLUIDOS.keys()), default=list(FLUIDOS.keys()))
+    # --- NUEVOS FILTROS GLOBALES ---
+    # 1. Filtro por Estado
+    estados_disponibles = sorted(st.session_state.dfZonas['Estado'].unique())
+    filtro_estados = st.multiselect("Estado de Fuga:", estados_disponibles, default=estados_disponibles)
+
+    # 2. Filtro por Área de Planta
+    areas_disponibles = sorted(st.session_state.dfZonas['Area'].unique())
+    filtro_areas = st.multiselect("Área de Planta:", areas_disponibles, default=areas_disponibles)
+
+    # 3. Filtro por Rango de Fechas (Basado en la columna 'Zona')
+    st.info("📅 El filtro de fechas aplica al registro guardado.")
+    # Nota: Como guardamos la fecha en la columna 'Zona', este filtro es textual
+    # Para un filtrado de fecha exacto, se requeriría procesar el string de 'Zona'
+    busqueda_fecha = st.text_input("🔍 Buscar Fecha (ej: 2026)")
+
     st.success("Conexión: Cloud Sync ✅")
 
     # --- FIRMA DE AUTOR (Movida al Sidebar) ---
@@ -148,7 +166,16 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
 
-df_filtrado = st.session_state.dfZonas[st.session_state.dfZonas['TipoFuga'].isin(filtro_fluidos)]
+# --- Lógica de Triple Filtrado ---
+df_filtrado = st.session_state.dfZonas[
+    (st.session_state.dfZonas['TipoFuga'].isin(filtro_fluidos)) &
+    (st.session_state.dfZonas['Estado'].isin(filtro_estados)) &
+    (st.session_state.dfZonas['Area'].isin(filtro_areas))
+]
+
+# Aplicar búsqueda de fecha si el usuario escribió algo
+if busqueda_fecha:
+    df_filtrado = df_filtrado[df_filtrado['Zona'].str.contains(busqueda_fecha, case=False, na=False)]
 
 # --- 6. TABS ---
 tabMapa, tabConfig, tabReporte = st.tabs(["📍 Mapa", "⚙️ Gestión", "📊 Reporte"])
@@ -216,23 +243,24 @@ with tabMapa:
         # Tooltip Elegante (Actualizado con Ubicación)
         hover_html = f"""
         <div style="background-color:#1d2129; color:white; padding:10px; border-radius:8px; border-left:5px solid {f_info['color']}; min-width:150px;">
-            <b>{f_info['emoji']} {row['Zona']}</b><br>
+            <b>{f_info['emoji']} {row['Area']}</b><br>
             <span style="color:#bdc3c7; font-size:0.85em;">{ubi_emoji} Instalación: {ubi}</span><br>
-            <span style="color:{color_sev}; font-size:0.9em;">Prioridad: {row['Severidad']}</span>
+            <span style="color:{color_sev}; font-size:0.9em;">Severidad: {row['Severidad']}</span>
         </div>"""
 
-        # Popup con Formulario Completo (Actualizado con Fila de Ubicación)
+# Popup (Clic) - Cambiamos "Zona" por "Área de Planta"
         popup_content = f"""
         <div style="font-family: 'Segoe UI', sans-serif; color: #333; min-width: 250px;">
             <h4 style="margin:0 0 10px 0; color:{f_info['color']}; border-bottom: 2px solid {color_sev};">📋 Ficha Técnica</h4>
             <table style="width:100%; font-size: 13px; border-spacing: 0 5px;">
-                <tr><td><b>Zona:</b></td><td>{row['Zona']}</td></tr>
+                <tr><td><b>Área de Planta:</b></td><td>{row['Area']}</td></tr>
                 <tr><td><b>Instalación:</b></td><td>{ubi_emoji} {ubi}</td></tr>
                 <tr><td><b>Estado:</b></td><td><b>{row.get('Estado', 'N/A')}</b></td></tr>
                 <tr><td><b>Categoría:</b></td><td>{row.get('Categoria', 'N/A')}</td></tr>
                 <tr><td><b>Caudal:</b></td><td>{row.get('L_min', 'N/A')} I/min</td></tr>
                 <tr><td><b>Costo/Año:</b></td><td style="color:#d9534f; font-weight:bold;">${row.get('CostoAnual', '0')} USD</td></tr>
                 <tr><td><b>Severidad:</b></td><td style="color:{color_sev}; font-weight:bold;">{row['Severidad']}</td></tr>
+                <tr><td><b>Fechas:</b></td><td>{row['Zona']}</td></tr>
             </table>
         </div>
         """
@@ -357,14 +385,17 @@ with tabConfig:
     col1, col2, col3 = st.columns(3)
     with col1:
             t_f = st.selectbox("Fluido", list(FLUIDOS.keys()))
-            n_z = st.text_input("Nombre de la Zona")
 
-            # Seleccionamos el diccionario según el fluido (si no es Helio, usa Aire por defecto)
+            # CAMBIO: Reemplazamos Nombre de Zona por Fechas
+            f_inicio = st.date_input("📅 Fecha de Inicio", value=datetime.now())
+            f_termino = st.date_input("📅 Fecha Estimada Término", value=datetime.now())
+
+            # Convertimos las fechas a texto para guardarlas en GSheets
+            n_z = f"{f_inicio.strftime('%d/%m/%Y')} - {f_termino.strftime('%d/%m/%Y')}"
+
             dict_actual = RELACION_FUGAS.get(t_f, RELACION_FUGAS["Aire"])
             cat_list_dinamica = list(dict_actual.keys())
-
             cat_f = st.selectbox("Categoría Critica", cat_list_dinamica)
-            idx_sincro = cat_list_dinamica.index(cat_f)
 
     with col2:
         id_m = st.text_input("ID Equipo / Máquina")
@@ -442,12 +473,12 @@ with tabReporte:
 
         # 2. DEFINICIÓN DE GRÁFICAS (G1, G2, G3, G4)
         g1 = alt.Chart(df_filtrado).mark_bar().encode(
-            x=alt.X('Severidad:N', sort=['Baja', 'Media', 'Alta'], title="Prioridad"),
-            y=alt.Y('count():Q', title="Cantidad"),
+            x=alt.X('Severidad:N', sort=['Baja', 'Media', 'Alta'], title="Nivel de Severidad"), # Título del eje X
+            y=alt.Y('count():Q', title="Cantidad de Hallazgos"), # Título del eje Y
             color=alt.Color('TipoFuga:N', scale=alt.Scale(domain=list(FLUIDOS.keys()),
                                                          range=[f['color'] for f in FLUIDOS.values()]), legend=None),
             tooltip=['TipoFuga', 'count()']
-        ).properties(width=180, height=250, title="Severidad")
+        ).properties(width=180, height=250, title="Distribución por Severidad") # Título superior de la gráfica
 
         g2 = alt.Chart(df_filtrado).mark_bar().encode(
             y=alt.Y('Estado:N', sort='-x', title=None),
