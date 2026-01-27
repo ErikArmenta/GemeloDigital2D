@@ -112,10 +112,17 @@ RELACION_FUGAS = {
         "Fuga E": {"l_min": "40.1-50", "costo": 1090},
     },
     "Helio": {
-        "Fuga A": {"l_min": "0.1-17", "costo": 220200},
-        "Fuga B": {"l_min": "17.1-32", "costo": 849895},
-        "Fuga C": {"l_min": "33.1-50", "costo": 1493755},
+        "Fuga A": {"l_min": "0.1-17", "costo": 13200},
+        "Fuga B": {"l_min": "17.1-32", "costo": 26400},
+        "Fuga C": {"l_min": "33.1-50", "costo": 132000},
+    },
+
+    "Aceite": {
+        "Fuga A": {"l_min": ".002-0.004", "costo": 2181.17},
+        "Fuga B": {"l_min": "0.004-0.01", "costo": 10905.48},
+        "Fuga C": {"l_min": "0.01-.1", "costo": 109058.40},
     }
+
 }
 
 # Definimos listas iniciales basadas en "Aire" para evitar el KeyError al cargar
@@ -131,7 +138,7 @@ FLUIDOS = {
     "Aceite": {"color": "#FFFF00", "emoji": "🛢️", "marker": "darkred"}
 }
 
-img_original = Image.open("PlanoHanon.png")
+img_original = Image.open("PlanoHanon.webp")
 ancho_real, alto_real = img_original.size
 
 # --- 5. SIDEBAR ---
@@ -223,7 +230,7 @@ with tabMapa:
     )
 
     ImageOverlay(
-        image="PlanoHanon.png",
+        image="PlanoHanon.webp",
         bounds=[[0, 0], [alto_real, ancho_real]],
         opacity=0.8
     ).add_to(m)
@@ -294,7 +301,7 @@ with tabConfig:
     )
 
     ImageOverlay(
-        image="PlanoHanon.png",
+        image="PlanoHanon.webp",
         bounds=[[0, 0], [alto_real, ancho_real]],
         opacity=1
     ).add_to(m2)
