@@ -330,6 +330,10 @@ with tabConfig:
     with col_btn_2:
         st.info("Descarga el plano original para ver detalles técnicos sin pixelado antes de marcar.")
 
+    st.markdown("---")
+    st.markdown("##### 2. Localización y Recorte")
+    st.info("Basándote en el plano de arriba, dibuja el área de la fuga aquí:")
+
     # --- CONFIGURACIÓN DEL MAPA DINÁMICO (Draw) ---
     m2 = folium.Map(
         location=[alto_real / 2, ancho_real / 2],
@@ -345,6 +349,35 @@ with tabConfig:
         opacity=1
     ).add_to(m2)
 
+    # --- INICIO: CAPA DE MEMORIA (Zonas ya registradas) ---
+    # Dibujamos lo que ya existe en el DataFrame para no encimar registros
+    if not st.session_state.dfZonas.empty:
+        for i, row in st.session_state.dfZonas.iterrows():
+            try:
+                # Revertimos la escala de 1200px a la escala real del plano
+                factor_x = ancho_real / 1200
+                factor_y = alto_real / (1200 * (alto_real / ancho_real))
+
+                # Coordenadas Folium (Invertidas en Y)
+                # p1: Top-Left, p2: Bottom-Right
+                p1_map = [alto_real - (row['y1'] * factor_y), row['x1'] * factor_x]
+                p2_map = [alto_real - (row['y2'] * factor_y), row['x2'] * factor_x]
+
+                # Usamos el color del fluido para identificar la zona
+                f_color = FLUIDOS.get(row['TipoFuga'], {"color": "gray"})['color']
+
+                folium.Rectangle(
+                    bounds=[p1_map, p2_map],
+                    color=f_color,
+                    weight=2,
+                    fill=True,
+                    fill_opacity=0.3,
+                    tooltip=f"Ya registrado: {row['Area']} ({row['TipoFuga']})"
+                ).add_to(m2)
+            except:
+                continue
+    # --- FIN: CAPA DE MEMORIA ---
+
     # Configuración de herramientas de dibujo
     draw = Draw(
         export=False,
@@ -355,42 +388,23 @@ with tabConfig:
             'circle': False,
             'marker': False,
             'circlemarker': False,
-            'rectangle': True, # Solo permitimos rectángulos por ahora para mantener compatibilidad
+            'rectangle': True,
         },
         edit_options={'edit': False}
     )
     draw.add_to(m2)
 
-    # # Renderizar el mapa con ancho completo
-    # output = st_folium(
-    #     m2,
-    #     width=1400, # Ajusta este valor según tu pantalla, 1400 suele cubrir el layout "wide"
-    #     height=600,
-    #     use_container_width=True # Esta opción es clave para que intente llenar el contenedor
-    # )
-
     # Capturamos la salida del mapa con dibujo
+    # Nota: mantenemos el key original "draw_map"
     output = st_folium(m2, width=1200, height=600, key="draw_map")
 
     coords_dibujadas = None
     if output["all_drawings"]:
-        # Tomamos el último dibujo
+        # Tomamos el último dibujo (el que el usuario acaba de hacer)
         last_draw = output["all_drawings"][-1]
         geometry = last_draw['geometry']
         if geometry['type'] == 'Polygon':
-            # Los rectángulos en GeoJSON son Polígonos de 5 puntos (el último cierra).
-            # Coordenadas: [[lng, lat]]
-            # En CRS Simple: Lng = X, Lat = Y
-            # Bounds: xmin, ymin, xmax, ymax
-            # Ojo: En Simple, Y crece hacia arriba (como Latitud), pero nuestra imagen original y coordenadas guardadas son Y hacia abajo (Top-Left 0,0).
-            # Ya dedujimos que folium Simple pone 0,0 abajo-izquierda.
-            # Y la imagen guardada:
-            # cx = stored_x * scale
-            # cy = alto_real - (stored_y * scale)
-            # => stored_y * scale = alto_real - cy
-            # => stored_y = (alto_real - cy) / scale
-
-            # Extraemos coordenadas del bounding box del dibujo
+            # ... (Toda tu lógica de conversión de coordenadas se mantiene exactamente igual)
             lons = [p[0] for p in geometry['coordinates'][0]]
             lats = [p[1] for p in geometry['coordinates'][0]]
 
@@ -399,21 +413,10 @@ with tabConfig:
             y_min_map = min(lats)
             y_max_map = max(lats)
 
-            # Conversión a Sistema de Coordenadas de 1200px (Invertido Y)
-            scale_factor = width_resize = 1200 / ancho_real
+            scale_factor = 1200 / ancho_real
 
-            # Map X (Lng) -> Stored X
-            # Stored X = Map X * Scale
             x1_stored = x_min_map * scale_factor
             x2_stored = x_max_map * scale_factor
-
-            # Map Y (Lat) -> Stored Y
-            # La coord Y del mapa (Lat) va de 0 a alto_real (abajo a arriba).
-            # La coord Y almacenada es de arriba a abajo.
-            # stored_y = (alto_real - map_y) * scale_factor
-            # Para bounding box:
-            # y1 (top) corresponde a y_max_map
-            # y2 (bottom) corresponde a y_min_map
             y1_stored = (alto_real - y_max_map) * scale_factor
             y2_stored = (alto_real - y_min_map) * scale_factor
 
@@ -595,5 +598,6 @@ st.markdown(f"""<div style="text-align: center; color: #888; background-color: #
     <p><b>Developed by:</b> Master Engineer Erik Armenta</p>
     <p style="font-style: italic; color: #5271ff;">"Accuracy is our signature, and innovation is our nature."</p>
 </div>""", unsafe_allow_html=True)
+
 
 
