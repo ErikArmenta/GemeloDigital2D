@@ -188,17 +188,32 @@ if busqueda_fecha:
 tabMapa, tabConfig, tabReporte = st.tabs(["📍 Mapa", "⚙️ Gestión", "📊 Reporte"])
 
 with tabMapa:
-    # --- MÉTRICAS ---
-    m1, m2, m3, m4 = st.columns(4)
-    with m1: st.metric("Hallazgos Totales", len(df_filtrado))
+    # --- MÉTRICAS ACTUALIZADAS ---
+    m1, m2, m3, m4, m5 = st.columns(5) # Añadimos m5
+    
+    with m1: 
+        st.metric("Hallazgos Totales", len(df_filtrado))
+    
     with m2:
         alta_count = len(df_filtrado[df_filtrado['Severidad'] == 'Alta'])
-        st.metric("🚨 Prioridad Alta", alta_count, delta=f"{alta_count} urgentes", delta_color="inverse")
+        st.metric("🚨 Prioridad Alta", alta_count)
+    
     with m3:
+        # IMPACTO TOTAL (General)
         costo_total = pd.to_numeric(df_filtrado['CostoAnual'], errors='coerce').sum()
-        st.metric("💰 Impacto Anual", f"${costo_total:,.0f} USD")
+        st.metric("💰 Impacto Total", f"${costo_total:,.0f} USD")
+        
     with m4:
-        st.metric("🛠️ En Reparación", len(df_filtrado[df_filtrado['Estado'] == 'En proceso de reparar']))
+        # NUEVA MÉTRICA: AHORRO GENERADO (Solo 'Completada')
+        df_completadas = df_filtrado[df_filtrado['Estado'] == 'Completada']
+        ahorro_real = pd.to_numeric(df_completadas['CostoAnual'], errors='coerce').sum()
+        st.metric("✅ Ahorro Generado", f"${ahorro_real:,.0f} USD", delta="¡Buen trabajo!", delta_color="normal")
+
+    with m5:
+        # IMPACTO PENDIENTE (Dañadas + En proceso)
+        df_pendientes = df_filtrado[df_filtrado['Estado'] != 'Completada']
+        costo_pendiente = pd.to_numeric(df_pendientes['CostoAnual'], errors='coerce').sum()
+        st.metric("⏳ Por Mitigar", f"${costo_pendiente:,.0f} USD", delta=f"-{len(df_pendientes)} fugas", delta_color="inverse")
 
     st.markdown("---")
 
@@ -556,3 +571,4 @@ st.markdown(f"""<div style="text-align: center; color: #888; background-color: #
     <p><b>Developed by:</b> Master Engineer Erik Armenta</p>
     <p style="font-style: italic; color: #5271ff;">"Accuracy is our signature, and innovation is our nature."</p>
 </div>""", unsafe_allow_html=True)
+
