@@ -139,8 +139,16 @@ RELACION_FUGAS = {
         "Fuga A": {"l_min": ".002-0.004", "costo": 2181.17},
         "Fuga B": {"l_min": "0.004-0.01", "costo": 10905.48},
         "Fuga C": {"l_min": "0.01-.1", "costo": 109058.40},
-    }
+    },
+"Gas Natural": {
+    "Fuga A": {"l_min": "1-50", "costo": 450},    # Fuga pequeña en conexión
+    "Fuga B": {"l_min": "51-150", "costo": 1800},  # Fuga en sello de válvula
+    "Fuga C": {"l_min": "151-500", "costo": 5200}, # Fuga en tubería principal
+}
 
+
+
+    
 }
 
 # Definimos listas iniciales basadas en "Aire" para evitar el KeyError al cargar
@@ -598,6 +606,7 @@ st.markdown(f"""<div style="text-align: center; color: #888; background-color: #
     <p><b>Developed by:</b> Master Engineer Erik Armenta</p>
     <p style="font-style: italic; color: #5271ff;">"Accuracy is our signature, and innovation is our nature."</p>
 </div>""", unsafe_allow_html=True)
+
 
 
 
