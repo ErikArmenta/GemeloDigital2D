@@ -101,6 +101,24 @@ def editar_registro(index, datos_actuales):
         st.session_state.dfZonas = cargar_datos()
         st.rerun()
 
+## ventana emergente de planop de referencia  ###
+@st.dialog("📥 Descargar Plano de Alta Resolución")
+def dialogo_descarga_plano():
+    st.write("Para una ubicación precisa sin pixelado, descarga el plano maestro en 16K.")
+    st.warning("Nota: El archivo es pesado debido a su alta resolución.")
+
+    with open("layout completo.png", "rb") as file:
+        btn = st.download_button(
+            label="💾 Descargar Plano Maestro (16K)",
+            data=file,
+            file_name="Plano_Maestro_Hanon_16K.png",
+            mime="image/png",
+            use_container_width=True
+        )
+    if btn:
+        st.success("Descarga iniciada. Ábrelo en tu visualizador de imágenes para máximo zoom.")
+
+
 # --- 4. CONFIGURACIÓN VISUAL ---
 # --- Configuarcion de formulas de categorias por fluido ---
 RELACION_FUGAS = {
@@ -303,8 +321,14 @@ with tabMapa:
 
 
 with tabConfig:
-    st.markdown("##### 1. Localización y Recorte")
-    st.info("Utiliza las herramientas de dibujo (cuadrado) en el mapa para definir la zona. Puedes hacer Zoom.")
+    st.markdown("##### 1. Referencia de Alta Precisión (16K)")
+
+    col_btn_1, col_btn_2 = st.columns([1, 2])
+    with col_btn_1:
+        if st.button("🔍 Obtener Plano 16K", use_container_width=True):
+            dialogo_descarga_plano()
+    with col_btn_2:
+        st.info("Descarga el plano original para ver detalles técnicos sin pixelado antes de marcar.")
 
     # --- CONFIGURACIÓN DEL MAPA DINÁMICO (Draw) ---
     m2 = folium.Map(
@@ -571,4 +595,5 @@ st.markdown(f"""<div style="text-align: center; color: #888; background-color: #
     <p><b>Developed by:</b> Master Engineer Erik Armenta</p>
     <p style="font-style: italic; color: #5271ff;">"Accuracy is our signature, and innovation is our nature."</p>
 </div>""", unsafe_allow_html=True)
+
 
