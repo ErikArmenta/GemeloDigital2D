@@ -584,11 +584,7 @@ with tabConfig:
                     with c_head1: st.markdown(f"**{r['Zona']}**")
                     with c_head2: st.markdown(f"<span style='color:{border_color}; font-size:1.5em;'>●</span>", unsafe_allow_html=True)
                     
-                    try:
-                        # Imagen pequeña
-                        img_hist = img_original.resize((1200, int(1200*alto_real/ancho_real)))
-                        st.image(img_hist.crop((r['x1'], r['y1'], r['x2'], r['y2'])), use_container_width=True)
-                    except: st.caption("No image")
+                    # Imagen eliminada por solicitud del usuario para limpiar la tarjeta
                     
                     st.caption(f"🆔 {r['ID_Maquina']} | 📍 {r['Area']}")
                     st.write(f"**Estado:** {r['Estado']}")
@@ -730,6 +726,7 @@ st.markdown(f"""<div style="text-align: center; color: #888; background-color: #
     <p><b>Developed by:</b> Master Engineer Erik Armenta</p>
     <p style="font-style: italic; color: #5271ff;">"Accuracy is our signature, and innovation is our nature."</p>
 </div>""", unsafe_allow_html=True)
+
 
 
 
