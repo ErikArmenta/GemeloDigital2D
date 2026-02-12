@@ -140,15 +140,15 @@ RELACION_FUGAS = {
         "Fuga B": {"l_min": "0.004-0.01", "costo": 10905.48},
         "Fuga C": {"l_min": "0.01-.1", "costo": 109058.40},
     },
-"Gas Natural": {
+    "Gas Natural": {
     "Fuga A": {"l_min": "1-50", "costo": 450},    # Fuga pequeña en conexión
     "Fuga B": {"l_min": "51-150", "costo": 1800},  # Fuga en sello de válvula
     "Fuga C": {"l_min": "151-500", "costo": 5200}, # Fuga en tubería principal
-}
-
-
-
-    
+    },
+    # --- NUEVO ESTADO: INSPECCIÓN (OK) ---
+    "Inspección (OK)": {
+        "Sin Fuga": {"l_min": "0", "costo": 0}
+    }
 }
 
 # Definimos listas iniciales basadas en "Aire" para evitar el KeyError al cargar
@@ -161,7 +161,8 @@ FLUIDOS = {
     "Gas": {"color": "#FFA500", "emoji": "🔥", "marker": "orange"},
     "Agua": {"color": "#00FFFF", "emoji": "💧", "marker": "cadetblue"},
     "Helio": {"color": "#FF00FF", "emoji": "🎈", "marker": "purple"},
-    "Aceite": {"color": "#FFFF00", "emoji": "🛢️", "marker": "darkred"}
+    "Aceite": {"color": "#FFFF00", "emoji": "🛢️", "marker": "darkred"},
+    "Inspección (OK)": {"color": "#28A745", "emoji": "✅", "marker": "green"}  # Nuevo
 }
 
 img_original = Image.open("PlanoHanon.webp")
@@ -276,6 +277,26 @@ with tabMapa:
         opacity=0.8
     ).add_to(m)
 
+    # --- NUEVO: CAPA DE ZONAS INSPECCIONADAS (Tab 1) ---
+    # Renderizamos rectángulos verdes para las zonas marcadas como "Inspección (OK)"
+    inspecciones = df_filtrado[df_filtrado['TipoFuga'] == "Inspección (OK)"]
+    if not inspecciones.empty:
+        for _, row_ins in inspecciones.iterrows():
+            factor_x = ancho_real / 1200
+            factor_y = alto_real / (1200 * (alto_real / ancho_real))
+            
+            p1_map = [alto_real - (row_ins['y2'] * factor_y), row_ins['x1'] * factor_x]
+            p2_map = [alto_real - (row_ins['y1'] * factor_y), row_ins['x2'] * factor_x]
+            
+            folium.Rectangle(
+                bounds=[p1_map, p2_map],
+                color="#28A745",
+                weight=1,
+                fill=True,
+                fill_opacity=0.2, # Baja opacidad para no tapar mucho
+                tooltip=f"Zona Inspeccionada: {row_ins['Area']}"
+            ).add_to(m)
+
 # --- 4. RENDERIZADO DE MARCADORES ---
     for i, row in df_filtrado.iterrows():
         factor_x, factor_y = ancho_real / 1200, alto_real / (1200 * (alto_real / ancho_real))
@@ -297,10 +318,12 @@ with tabMapa:
         </div>"""
 
 # Popup (Clic) - Cambiamos "Zona" por "Área de Planta"
+        # Popup (Clic) - Cambiamos "Zona" por "Área de Planta" y añadimos ID MAQUINA
         popup_content = f"""
         <div style="font-family: 'Segoe UI', sans-serif; color: #333; min-width: 250px;">
             <h4 style="margin:0 0 10px 0; color:{f_info['color']}; border-bottom: 2px solid {color_sev};">📋 Ficha Técnica</h4>
             <table style="width:100%; font-size: 13px; border-spacing: 0 5px;">
+                <tr><td><b>ID Máquina:</b></td><td><b>{row.get('ID_Maquina', 'N/A')}</b></td></tr>
                 <tr><td><b>Área de Planta:</b></td><td>{row['Area']}</td></tr>
                 <tr><td><b>Instalación:</b></td><td>{ubi_emoji} {ubi}</td></tr>
                 <tr><td><b>Estado:</b></td><td><b>{row.get('Estado', 'N/A')}</b></td></tr>
@@ -316,12 +339,25 @@ with tabMapa:
         # Crear el Icono
         # Si es Severidad Alta, le añadimos la clase 'brinca-peppo' para que salte
         clase_css = "brinca-peppo" if row['Severidad'] == "Alta" else ""
+        
+        # --- ICONOGRAFÍA DINÁMICA ---
+        # Por defecto info-sign. Si está completada o es inspección OK, usamos ok-sign (check)
+        icono_mapa = "info-sign"
+        if row['Estado'] == "Completada" or row['TipoFuga'] == "Inspección (OK)":
+            icono_mapa = "ok-sign" # Check verde
+
+        # Si es Inspección (OK), no queremos marcador, o sí? 
+        # El user pide "Zonas Inspeccionadas" como rectángulos (ya hecho arriba), 
+        # pero si está en el grid, quizás quiera ver el punto central también.
+        # "Visualización: En el mapa de gestión (Tab 2), las zonas inspeccionadas deben renderizarse con un rectángulo verde sólido" -> Esto es para Tab 2 (Config/mapa 2), pero el user dijo "Tab 2...". 
+        # Espera, punto 3 dice "Tab 'Mapa' ... Implementa la capa de 'Zonas Inspeccionadas' en el Tab 1".
+        # Asumimos que también se dibujan marcadores normales para mantener consistencia, solo que verdes.
 
         folium.Marker(
             location=[cy, cx],
             popup=folium.Popup(popup_content, max_width=350),
             tooltip=folium.Tooltip(hover_html),
-            icon=folium.Icon(color=f_info['marker'], icon="info-sign", extra_params=f'class="{clase_css}"')
+            icon=folium.Icon(color=f_info['marker'], icon=icono_mapa, extra_params=f'class="{clase_css}"')
         ).add_to(m)
 
     st_folium(m, width=1400, height=750, use_container_width=True)
@@ -468,7 +504,13 @@ with tabConfig:
         cost_f = dict_actual[cat_f]["costo"]
         st.selectbox("Costo por año (USD)", [cost_f], index=0, disabled=True)
         tipo_ubicacion = st.radio("Tipo de Instalación", ["Terrestre", "Aérea"], horizontal=True)
-        est_f = st.selectbox("Estado Inicial", ["En proceso de reparar", "Dañada", "Completada"], index=1)
+        
+        # Lógica para Estado según Fluido
+        opciones_estado = ["En proceso de reparar", "Dañada", "Completada"]
+        if t_f == "Inspección (OK)":
+            opciones_estado = ["Completada"] # Si es inspección, por defecto está OK/Completada
+            
+        est_f = st.selectbox("Estado Inicial", opciones_estado, index=len(opciones_estado)-1)
 
     if st.button("🚰📝 Record leak", use_container_width=True):
             if coords_dibujadas and n_z:
@@ -496,21 +538,72 @@ with tabConfig:
     else:
         st.warning("⚠️ Asegúrate de dibujar el área y poner un nombre a la zona.")
 
-    st.subheader("📋 Historial Registrado")
-    for idx, r in st.session_state.dfZonas.iterrows():
-        with st.container(border=True):
-            h1, h2, h3 = st.columns([1, 2, 1])
-            with h1:
-                try:
-                    # Para mostrar el crop, reutilizamos la lógica de imagen estática resizeada
-                    # puesto que 'r' tiene coordenadas en base 1200px
-                    img_hist = img_original.resize((1200, int(1200*alto_real/ancho_real)))
-                    st.image(img_hist.crop((r['x1'], r['y1'], r['x2'], r['y2'])))
-                except: st.caption("No image")
-            with h2: st.markdown(f"**{r['Zona']}** ({r['Severidad']})"); st.caption(f"{r['Area']} | {r['ID_Maquina']}")
-            with h3:
-                if st.button("✏️", key=f"ed_{idx}"): editar_registro(idx, r)
-                if st.button("🗑️", key=f"del_{idx}"): sheet.delete_rows(idx+2); st.session_state.dfZonas = cargar_datos(); st.rerun()
+    st.subheader("📋 Historial de Gestión")
+    
+    # --- FILTROS LOCALES PARA GESTIÓN ---
+    col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
+    with col_f1:
+        search_query = st.text_input("🔍 Buscar en Historial (ID, Zona, Máquina...)", placeholder="Escribe para filtrar...")
+    with col_f2:
+        filtro_area_gest = st.multiselect("Filtrar Área", sorted(st.session_state.dfZonas['Area'].unique()), key="f_area_gest")
+    with col_f3:
+        filtro_estado_gest = st.multiselect("Filtrar Estado", sorted(st.session_state.dfZonas['Estado'].unique()), key="f_estado_gest")
+
+    # Aplicamos filtros locales
+    df_gestion = st.session_state.dfZonas.copy()
+    if search_query:
+        df_gestion = df_gestion[
+            df_gestion.apply(lambda row: search_query.lower() in str(row.values).lower(), axis=1)
+        ]
+    if filtro_area_gest:
+        df_gestion = df_gestion[df_gestion['Area'].isin(filtro_area_gest)]
+    if filtro_estado_gest:
+        df_gestion = df_gestion[df_gestion['Estado'].isin(filtro_estado_gest)]
+
+    # --- OPTIMIZACIÓN: RENDERIZADO AL 50% SI NO HAY FILTROS ---
+    # "Solo renderizamos la mitad y la otra mitad a través del filtro"
+    if not search_query and not filtro_area_gest and not filtro_estado_gest:
+        limit_regs = int(len(df_gestion) / 2)
+        if limit_regs > 0:
+            # Mostramos los MÁS RECIENTES (tail)
+            df_gestion = df_gestion.tail(limit_regs)
+            st.caption(f"ℹ️ Mostrando los {limit_regs} registros más recientes. Usa los filtros para ver más antiguos.")
+
+    # --- RENDERIZADO EN GRID (Parrilla) ---
+    # Usamos st.columns(3) dentro del bucle
+    if not df_gestion.empty:
+        cols = st.columns(3)
+        for i, (idx, r) in enumerate(df_gestion.iterrows()):
+            with cols[i % 3]: # Distribución cíclica en 3 columnas
+                # Definimos color/borde según estado
+                border_color = "#28a745" if r['Estado'] == "Completada" or r['TipoFuga'] == "Inspección (OK)" else "#d9534f" if r['Estado'] == "Dañada" else "#f0ad4e"
+                
+                with st.container(border=True):
+                    # Header de la tarjeta
+                    c_head1, c_head2 = st.columns([3,1])
+                    with c_head1: st.markdown(f"**{r['Zona']}**")
+                    with c_head2: st.markdown(f"<span style='color:{border_color}; font-size:1.5em;'>●</span>", unsafe_allow_html=True)
+                    
+                    try:
+                        # Imagen pequeña
+                        img_hist = img_original.resize((1200, int(1200*alto_real/ancho_real)))
+                        st.image(img_hist.crop((r['x1'], r['y1'], r['x2'], r['y2'])), use_container_width=True)
+                    except: st.caption("No image")
+                    
+                    st.caption(f"🆔 {r['ID_Maquina']} | 📍 {r['Area']}")
+                    st.write(f"**Estado:** {r['Estado']}")
+                    
+                    # Botones de Acción
+                    b1, b2 = st.columns(2)
+                    with b1: 
+                        if st.button("✏️ Editar", key=f"ed_{idx}", use_container_width=True): editar_registro(idx, r)
+                    with b2:
+                        if st.button("🗑️ Borrar", key=f"del_{idx}", use_container_width=True): 
+                            sheet.delete_rows(idx+2)
+                            st.session_state.dfZonas = cargar_datos()
+                            st.rerun()
+    else:
+        st.info("No se encontraron registros con los filtros actuales.")
 
 with tabReporte:
     st.subheader("📊 Panel de Control Operativo")
@@ -561,7 +654,34 @@ with tabReporte:
         g4 = (anillo + texto).properties(width=180, height=250, title="Eficiencia")
 
         # 3. RENDERIZADO DASHBOARD
-        dashboard_unificado = alt.hconcat(g1, g2, g3, g4).configure_view(stroke=None).configure_concat(spacing=30)
+        # NUEVA GRÁFICA: INSPECCIONADAS VS DETECTADAS
+        # Contamos "Inspección (OK)" vs Resto de Fugas (Dañada + En Proceso + Completada (pero completada es fuga reparada))
+        # El user pide: % Áreas Inspeccionadas vs Fugas Detectadas (Dañadas + En Proceso)
+        
+        # Total registros
+        total_regs = len(df_filtrado)
+        n_inspecciones = len(df_filtrado[df_filtrado['TipoFuga'] == "Inspección (OK)"])
+        n_fugas_activas = len(df_filtrado[df_filtrado['Estado'].isin(['Dañada', 'En proceso de reparar'])])
+        
+        # Creamos DF para la gráfica
+        data_pie = pd.DataFrame({
+            'Categoria': ['Inspeccionado (OK)', 'Fugas Detectadas'],
+            'Valor': [n_inspecciones, n_fugas_activas]
+        })
+        
+        base_pie = alt.Chart(data_pie).encode(
+            theta=alt.Theta("Valor", stack=True),
+            color=alt.Color("Categoria", scale=alt.Scale(domain=['Inspeccionado (OK)', 'Fugas Detectadas'], range=['#28a745', '#d9534f']), legend=None)
+        )
+        pie = base_pie.mark_arc(outerRadius=80)
+        text_pie = base_pie.mark_text(radius=100).encode(
+            text=alt.Text("Valor"),
+            order=alt.Order("Valor", sort="descending")
+        )
+        
+        g5 = (pie + text_pie).properties(width=180, height=250, title="Cobertura vs Fugas")
+
+        dashboard_unificado = alt.hconcat(g1, g2, g3, g4, g5).configure_view(stroke=None).configure_concat(spacing=30)
         st.altair_chart(dashboard_unificado, use_container_width=True)
 
         # 4. PLANO DE RIESGOS (BAJADO)
@@ -582,7 +702,11 @@ with tabReporte:
         d_col1, d_col2, d_col3 = st.columns(3)
 
         with d_col1:
-            csv = df_filtrado.to_csv(index=False).encode('utf-8')
+            # SANITIZACIÓN: Convertimos L_min a string con apóstrofe para Excel
+            df_export = df_filtrado.copy()
+            df_export['L_min'] = df_export['L_min'].apply(lambda x: f"'{x}")
+            
+            csv = df_export.to_csv(index=False).encode('utf-8')
             st.download_button("📊 Datos (CSV)", data=csv, file_name="Reporte_Fugas.csv", mime="text/csv", use_container_width=True)
 
         with d_col2:
