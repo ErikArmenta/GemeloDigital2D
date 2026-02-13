@@ -217,19 +217,19 @@ tabMapa, tabConfig, tabReporte = st.tabs(["📍 Mapa", "⚙️ Gestión", "📊 
 with tabMapa:
     # --- MÉTRICAS ACTUALIZADAS ---
     m1, m2, m3, m4, m5 = st.columns(5) # Añadimos m5
-    
-    with m1: 
+
+    with m1:
         st.metric("Hallazgos Totales", len(df_filtrado))
-    
+
     with m2:
         alta_count = len(df_filtrado[df_filtrado['Severidad'] == 'Alta'])
         st.metric("🚨 Prioridad Alta", alta_count)
-    
+
     with m3:
         # IMPACTO TOTAL (General)
         costo_total = pd.to_numeric(df_filtrado['CostoAnual'], errors='coerce').sum()
         st.metric("💰 Impacto Total", f"${costo_total:,.0f} USD")
-        
+
     with m4:
         # NUEVA MÉTRICA: AHORRO GENERADO (Solo 'Completada')
         df_completadas = df_filtrado[df_filtrado['Estado'] == 'Completada']
@@ -284,10 +284,10 @@ with tabMapa:
         for _, row_ins in inspecciones.iterrows():
             factor_x = ancho_real / 1200
             factor_y = alto_real / (1200 * (alto_real / ancho_real))
-            
+
             p1_map = [alto_real - (row_ins['y2'] * factor_y), row_ins['x1'] * factor_x]
             p2_map = [alto_real - (row_ins['y1'] * factor_y), row_ins['x2'] * factor_x]
-            
+
             folium.Rectangle(
                 bounds=[p1_map, p2_map],
                 color="#28A745",
@@ -339,17 +339,17 @@ with tabMapa:
         # Crear el Icono
         # Si es Severidad Alta, le añadimos la clase 'brinca-peppo' para que salte
         clase_css = "brinca-peppo" if row['Severidad'] == "Alta" else ""
-        
+
         # --- ICONOGRAFÍA DINÁMICA ---
         # Por defecto info-sign. Si está completada o es inspección OK, usamos ok-sign (check)
         icono_mapa = "info-sign"
         if row['Estado'] == "Completada" or row['TipoFuga'] == "Inspección (OK)":
             icono_mapa = "ok-sign" # Check verde
 
-        # Si es Inspección (OK), no queremos marcador, o sí? 
-        # El user pide "Zonas Inspeccionadas" como rectángulos (ya hecho arriba), 
+        # Si es Inspección (OK), no queremos marcador, o sí?
+        # El user pide "Zonas Inspeccionadas" como rectángulos (ya hecho arriba),
         # pero si está en el grid, quizás quiera ver el punto central también.
-        # "Visualización: En el mapa de gestión (Tab 2), las zonas inspeccionadas deben renderizarse con un rectángulo verde sólido" -> Esto es para Tab 2 (Config/mapa 2), pero el user dijo "Tab 2...". 
+        # "Visualización: En el mapa de gestión (Tab 2), las zonas inspeccionadas deben renderizarse con un rectángulo verde sólido" -> Esto es para Tab 2 (Config/mapa 2), pero el user dijo "Tab 2...".
         # Espera, punto 3 dice "Tab 'Mapa' ... Implementa la capa de 'Zonas Inspeccionadas' en el Tab 1".
         # Asumimos que también se dibujan marcadores normales para mantener consistencia, solo que verdes.
 
@@ -504,12 +504,12 @@ with tabConfig:
         cost_f = dict_actual[cat_f]["costo"]
         st.selectbox("Costo por año (USD)", [cost_f], index=0, disabled=True)
         tipo_ubicacion = st.radio("Tipo de Instalación", ["Terrestre", "Aérea"], horizontal=True)
-        
+
         # Lógica para Estado según Fluido
         opciones_estado = ["En proceso de reparar", "Dañada", "Completada"]
         if t_f == "Inspección (OK)":
             opciones_estado = ["Completada"] # Si es inspección, por defecto está OK/Completada
-            
+
         est_f = st.selectbox("Estado Inicial", opciones_estado, index=len(opciones_estado)-1)
 
     if st.button("🚰📝 Record leak", use_container_width=True):
@@ -539,7 +539,7 @@ with tabConfig:
         st.warning("⚠️ Asegúrate de dibujar el área y poner un nombre a la zona.")
 
     st.subheader("📋 Historial de Gestión")
-    
+
     # --- FILTROS LOCALES PARA GESTIÓN ---
     col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
     with col_f1:
@@ -577,24 +577,24 @@ with tabConfig:
             with cols[i % 3]: # Distribución cíclica en 3 columnas
                 # Definimos color/borde según estado
                 border_color = "#28a745" if r['Estado'] == "Completada" or r['TipoFuga'] == "Inspección (OK)" else "#d9534f" if r['Estado'] == "Dañada" else "#f0ad4e"
-                
+
                 with st.container(border=True):
                     # Header de la tarjeta
                     c_head1, c_head2 = st.columns([3,1])
                     with c_head1: st.markdown(f"**{r['Zona']}**")
                     with c_head2: st.markdown(f"<span style='color:{border_color}; font-size:1.5em;'>●</span>", unsafe_allow_html=True)
-                    
+
                     # Imagen eliminada por solicitud del usuario para limpiar la tarjeta
-                    
+
                     st.caption(f"🆔 {r['ID_Maquina']} | 📍 {r['Area']}")
                     st.write(f"**Estado:** {r['Estado']}")
-                    
+
                     # Botones de Acción
                     b1, b2 = st.columns(2)
-                    with b1: 
+                    with b1:
                         if st.button("✏️ Editar", key=f"ed_{idx}", use_container_width=True): editar_registro(idx, r)
                     with b2:
-                        if st.button("🗑️ Borrar", key=f"del_{idx}", use_container_width=True): 
+                        if st.button("🗑️ Borrar", key=f"del_{idx}", use_container_width=True):
                             sheet.delete_rows(idx+2)
                             st.session_state.dfZonas = cargar_datos()
                             st.rerun()
@@ -617,14 +617,14 @@ with tabReporte:
         reparadas = len(df_reparacion[df_reparacion['Eficiencia'] == 'Reparada'])
         porcentaje = (reparadas / total * 100) if total > 0 else 0
 
-        # 2. DEFINICIÓN DE GRÁFICAS (G1, G2, G3, G4)
+        # 2. DEFINICIÓN DE GRÁFICAS (G1, G2, G3, G4, G5)
         g1 = alt.Chart(df_filtrado).mark_bar().encode(
-            x=alt.X('Severidad:N', sort=['Baja', 'Media', 'Alta'], title="Nivel de Severidad"), # Título del eje X
-            y=alt.Y('count():Q', title="Cantidad de Hallazgos"), # Título del eje Y
+            x=alt.X('Severidad:N', sort=['Baja', 'Media', 'Alta'], title="Nivel de Severidad"),
+            y=alt.Y('count():Q', title="Cantidad de Hallazgos"),
             color=alt.Color('TipoFuga:N', scale=alt.Scale(domain=list(FLUIDOS.keys()),
                                                          range=[f['color'] for f in FLUIDOS.values()]), legend=None),
             tooltip=['TipoFuga', 'count()']
-        ).properties(width=180, height=250, title="Distribución por Severidad") # Título superior de la gráfica
+        ).properties(width=180, height=250, title="Distribución por Severidad")
 
         g2 = alt.Chart(df_filtrado).mark_bar().encode(
             y=alt.Y('Estado:N', sort='-x', title=None),
@@ -649,34 +649,29 @@ with tabReporte:
         texto = alt.Chart(pd.DataFrame({'t': [f'{porcentaje:.0f}%']})).mark_text(fontSize=20, fontWeight='bold', color='white').encode(text='t:N')
         g4 = (anillo + texto).properties(width=180, height=250, title="Eficiencia")
 
-        # 3. RENDERIZADO DASHBOARD
-        # NUEVA GRÁFICA: INSPECCIONADAS VS DETECTADAS
-        # Contamos "Inspección (OK)" vs Resto de Fugas (Dañada + En Proceso + Completada (pero completada es fuga reparada))
-        # El user pide: % Áreas Inspeccionadas vs Fugas Detectadas (Dañadas + En Proceso)
-        
-        # Total registros
-        total_regs = len(df_filtrado)
+        # --- CORRECCIÓN G5: COBERTURA (Anillo con % Central) ---
         n_inspecciones = len(df_filtrado[df_filtrado['TipoFuga'] == "Inspección (OK)"])
         n_fugas_activas = len(df_filtrado[df_filtrado['Estado'].isin(['Dañada', 'En proceso de reparar'])])
-        
-        # Creamos DF para la gráfica
+        total_cobertura = n_inspecciones + n_fugas_activas
+        pct_cobertura = (n_inspecciones / total_cobertura * 100) if total_cobertura > 0 else 0
+
         data_pie = pd.DataFrame({
             'Categoria': ['Inspeccionado (OK)', 'Fugas Detectadas'],
             'Valor': [n_inspecciones, n_fugas_activas]
         })
-        
-        base_pie = alt.Chart(data_pie).encode(
-            theta=alt.Theta("Valor", stack=True),
-            color=alt.Color("Categoria", scale=alt.Scale(domain=['Inspeccionado (OK)', 'Fugas Detectadas'], range=['#28a745', '#d9534f']), legend=None)
-        )
-        pie = base_pie.mark_arc(outerRadius=80)
-        text_pie = base_pie.mark_text(radius=100).encode(
-            text=alt.Text("Valor"),
-            order=alt.Order("Valor", sort="descending")
-        )
-        
-        g5 = (pie + text_pie).properties(width=180, height=250, title="Cobertura vs Fugas")
 
+        base_g5 = alt.Chart(data_pie).encode(
+            theta=alt.Theta("Valor:Q", stack=True),
+            color=alt.Color("Categoria:N", scale=alt.Scale(domain=['Inspeccionado (OK)', 'Fugas Detectadas'],
+                                                          range=['#28a745', '#d9534f']), legend=None)
+        )
+
+        anillo_g5 = base_g5.mark_arc(innerRadius=45)
+        texto_g5 = alt.Chart(pd.DataFrame({'t': [f'{pct_cobertura:.0f}%']})).mark_text(fontSize=20, fontWeight='bold', color='white').encode(text='t:N')
+
+        g5 = (anillo_g5 + texto_g5).properties(width=180, height=250, title="Cobertura vs Fugas")
+
+        # 3. RENDERIZADO DASHBOARD
         dashboard_unificado = alt.hconcat(g1, g2, g3, g4, g5).configure_view(stroke=None).configure_concat(spacing=30)
         st.altair_chart(dashboard_unificado, use_container_width=True)
 
@@ -693,15 +688,34 @@ with tabReporte:
 
         st.image(rep_img, caption="Vista de Riesgos en Planta", use_container_width=True)
 
-        # 5. BOTONES DE DESCARGA (TODOS JUNTOS)
+# 5. BOTONES DE DESCARGA (TODOS JUNTOS)
         st.subheader("📥 Exportar Reportes")
         d_col1, d_col2, d_col3 = st.columns(3)
 
         with d_col1:
-            # SANITIZACIÓN: Convertimos L_min a string con apóstrofe para Excel
+            # --- CAMBIOS TÉCNICOS ---
             df_export = df_filtrado.copy()
-            df_export['L_min'] = df_export['L_min'].apply(lambda x: f"'{x}")
-            
+
+            # 1) Quitar datos de coordenadas solo al descargar
+            df_export = df_export.drop(columns=['x1', 'y1', 'x2', 'y2'], errors='ignore')
+
+            # 2) Renombrar columna 'Zona' a 'Fechas' solo para el reporte
+            df_export = df_export.rename(columns={'Zona': 'Fechas'})
+
+            # 3) Procesar L_min como datos numéricos (limpieza de rangos para evitar formato fecha)
+            def limpiar_l_min(valor):
+                try:
+                    # Extraemos el número más alto del rango (ej: "10.1-20" -> 20.0)
+                    v_str = str(valor).replace('I/min', '').strip()
+                    if '-' in v_str:
+                        return float(v_str.split('-')[-1])
+                    return float(v_str)
+                except:
+                    return 0.0
+
+            df_export['L_min'] = df_export['L_min'].apply(limpiar_l_min)
+            # -----------------------------
+
             csv = df_export.to_csv(index=False).encode('utf-8')
             st.download_button("📊 Datos (CSV)", data=csv, file_name="Reporte_Fugas.csv", mime="text/csv", use_container_width=True)
 
