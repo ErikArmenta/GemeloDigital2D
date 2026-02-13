@@ -140,7 +140,7 @@ RELACION_FUGAS = {
         "Fuga B": {"l_min": "0.004-0.01", "costo": 10905.48},
         "Fuga C": {"l_min": "0.01-.1", "costo": 109058.40},
     },
-    "Gas": {
+    "Gas Natural": {
     "Fuga A": {"l_min": "1-50", "costo": 450},    # Fuga pequeña en conexión
     "Fuga B": {"l_min": "51-150", "costo": 1800},  # Fuga en sello de válvula
     "Fuga C": {"l_min": "151-500", "costo": 5200}, # Fuga en tubería principal
@@ -158,7 +158,7 @@ costos_list = [v["costo"] for v in RELACION_FUGAS["Aire"].values()]
 
 FLUIDOS = {
     "Aire": {"color": "#0000FF", "emoji": "💨", "marker": "blue"},
-    "Gas": {"color": "#FFA500", "emoji": "🔥", "marker": "orange"},
+    "Gas Natural": {"color": "#FFA500", "emoji": "🔥", "marker": "orange"},
     "Agua": {"color": "#00FFFF", "emoji": "💧", "marker": "cadetblue"},
     "Helio": {"color": "#FF00FF", "emoji": "🎈", "marker": "purple"},
     "Aceite": {"color": "#FFFF00", "emoji": "🛢️", "marker": "darkred"},
@@ -834,6 +834,7 @@ st.markdown(f"""<div style="text-align: center; color: #888; background-color: #
     <p><b>Developed by:</b> Master Engineer Erik Armenta</p>
     <p style="font-style: italic; color: #5271ff;">"Accuracy is our signature, and innovation is our nature."</p>
 </div>""", unsafe_allow_html=True)
+
 
 
 
