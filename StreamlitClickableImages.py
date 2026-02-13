@@ -688,24 +688,25 @@ with tabReporte:
 
         st.image(rep_img, caption="Vista de Riesgos en Planta", use_container_width=True)
 
-# 5. BOTONES DE DESCARGA (TODOS JUNTOS)
+# 5. BOTONES DE DESCARGA (CENTRADO Y ESTILIZADO)
         st.subheader("📥 Exportar Reportes")
-        d_col1, d_col2, d_col3 = st.columns(3)
+
+        # Creamos 5 columnas para usar las de los extremos como "aire" y centrar los 3 botones principales
+        _, d_col1, d_col2, d_col3, _ = st.columns([0.5, 3, 3, 3, 0.5])
 
         with d_col1:
-            # --- CAMBIOS TÉCNICOS ---
+            # --- EXPORTACIÓN CSV (Saneado) ---
             df_export = df_filtrado.copy()
 
-            # 1) Quitar datos de coordenadas solo al descargar
+            # 1) Quitar datos de coordenadas
             df_export = df_export.drop(columns=['x1', 'y1', 'x2', 'y2'], errors='ignore')
 
-            # 2) Renombrar columna 'Zona' a 'Fechas' solo para el reporte
+            # 2) Renombrar columna 'Zona' a 'Fechas'
             df_export = df_export.rename(columns={'Zona': 'Fechas'})
 
-            # 3) Procesar L_min como datos numéricos (limpieza de rangos para evitar formato fecha)
+            # 3) Procesar L_min como datos numéricos
             def limpiar_l_min(valor):
                 try:
-                    # Extraemos el número más alto del rango (ej: "10.1-20" -> 20.0)
                     v_str = str(valor).replace('I/min', '').strip()
                     if '-' in v_str:
                         return float(v_str.split('-')[-1])
@@ -714,32 +715,126 @@ with tabReporte:
                     return 0.0
 
             df_export['L_min'] = df_export['L_min'].apply(limpiar_l_min)
-            # -----------------------------
 
             csv = df_export.to_csv(index=False).encode('utf-8')
-            st.download_button("📊 Datos (CSV)", data=csv, file_name="Reporte_Fugas.csv", mime="text/csv", use_container_width=True)
+            st.download_button(
+                label="📊 Datos (CSV)",
+                data=csv,
+                file_name="Reporte_Fugas.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
 
         with d_col2:
-            buf = io.BytesIO()
-            rep_img.save(buf, format="PNG")
-            st.download_button("🖼️ Imagen PNG", data=buf.getvalue(), file_name="Mapa_Riesgos.png", mime="image/png", use_container_width=True)
+            # --- REPORTE GRÁFICO PROFESIONAL (HTML CUSTOM) ---
+            # Extraemos el JSON de la gráfica unificada
+            import json
+            chart_json = dashboard_unificado.to_json()
+
+            # Plantilla HTML con estilos profesionales (Dark Theme & Glassmorphism)
+            profesional_html = f"""
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <title>Leak Hunter | Executive Report</title>
+              <script src="https://cdn.jsdelivr.net/npm/vega@5"></script>
+              <script src="https://cdn.jsdelivr.net/npm/vega-lite@5"></script>
+              <script src="https://cdn.jsdelivr.net/npm/vega-embed@6"></script>
+              <style>
+                body {{
+                  background-color: #0e1117;
+                  color: #fafafa;
+                  font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+                  display: flex;
+                  flex-direction: column;
+                  align-items: center;
+                  padding: 40px;
+                  margin: 0;
+                }}
+                .container {{
+                  max-width: 1200px;
+                  width: 100%;
+                }}
+                .header {{
+                  text-align: center;
+                  padding: 30px;
+                  background: linear-gradient(135deg, #161a22 0%, #1d2129 100%);
+                  border-radius: 20px;
+                  border: 1px solid #2d323d;
+                  margin-bottom: 30px;
+                  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                }}
+                .header h1 {{ margin: 0; color: #5271ff; font-size: 2.5em; letter-spacing: -1px; }}
+                .header p {{ color: #888; margin-top: 10px; font-size: 1.1em; }}
+                #vis {{
+                  background: #161a22;
+                  padding: 30px;
+                  border-radius: 20px;
+                  border: 1px solid #2d323d;
+                  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+                  overflow-x: auto;
+                }}
+                .footer {{
+                  margin-top: 50px;
+                  text-align: center;
+                  color: #444;
+                  font-size: 0.9em;
+                  border-top: 1px solid #2d323d;
+                  padding-top: 20px;
+                  width: 100%;
+                }}
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <h1>🏭 Leak Hunter Report</h1>
+                  <p>Monitoring Dashboard | Industrial Digital Twin Report</p>
+                </div>
+                <div id="vis"></div>
+                <div class="footer">
+                  Developed by Master Engineer Erik Armenta &copy; 2026
+                </div>
+              </div>
+              <script>
+                const spec = {chart_json};
+                vegaEmbed('#vis', spec, {{
+                  mode: "vega-lite",
+                  theme: "dark",
+                  actions: true
+                }}).then(console.log).catch(console.warn);
+              </script>
+            </body>
+            </html>
+            """
+
+            st.download_button(
+                label="📈 Leak Hunter | Executive Report",
+                data=profesional_html,
+                file_name="Dashboard_Interactivo_LeakHunter.html",
+                mime="text/html",
+                use_container_width=True
+            )
 
         with d_col3:
-            # Aquí asumimos que el objeto 'm' (folium) ya fue creado arriba
+            # --- MAPA INTERACTIVO (HTML) ---
             m.save("mapa_interactivo.html")
             with open("mapa_interactivo.html", "rb") as f:
-                st.download_button("🗺️ Mapa HTML", data=f, file_name="Mapa_Interactivo.html", mime="text/html", use_container_width=True)
-
-    else:
-        # SOLO UN ELSE AL FINAL
-        st.info("Filtra algún fluido en el menú lateral para ver el reporte.")
+                st.download_button(
+                    label="🗺️ Plano Interactivo",
+                    data=f,
+                    file_name="Mapa_Interactivo.html",
+                    mime="text/html",
+                    use_container_width=True
+                )
 
 # --- FOOTER CON FIRMA ---
 st.markdown(f"""<div style="text-align: center; color: #888; background-color: #161a22; padding: 25px; border-radius: 15px; border: 1px solid #2d323d; margin-top: 40px;">
-    <h3 style="color: #fff;">🏭💧 Leak Hunter Digital Twin v1.1</h3>
+    <h3 style="color: #fff;">🏭💧 Leak Hunter Digital Twin v4.0</h3>
     <p><b>Developed by:</b> Master Engineer Erik Armenta</p>
     <p style="font-style: italic; color: #5271ff;">"Accuracy is our signature, and innovation is our nature."</p>
 </div>""", unsafe_allow_html=True)
+
 
 
 
