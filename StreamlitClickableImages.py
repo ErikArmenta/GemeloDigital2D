@@ -2,7 +2,8 @@ import streamlit as st
 from streamlit_image_coordinates import streamlit_image_coordinates
 import pandas as pd
 from PIL import Image, ImageDraw
-import gspread
+from supabase import create_client, Client
+import json
 import folium
 from folium.plugins import Draw
 from streamlit_folium import st_folium
@@ -22,32 +23,81 @@ st.set_page_config(
 )
 
 # --- 2. CONEXIÓN GSHEET ---
+# --- 2. CONEXIÓN SUPABASE ---
 @st.cache_resource
-def conectar_gsheet():
+def init_connection():
     try:
-        credentials = st.secrets["gcp_service_account"]
-        gc = gspread.service_account_from_dict(credentials)
-        sh = gc.open_by_url("https://docs.google.com/spreadsheets/d/1on_gy_rcoLHiU-jlEisvArr38v90Nwuj_SysnooEuTY/edit#gid=0")
-        return sh.get_worksheet(0)
-    except: return None
+        # Intentamos buscar 'supabase' o 'supa_secrets' para compatibilidad
+        if "supabase" in st.secrets:
+            section = st.secrets["supabase"]
+        elif "supa_secrets" in st.secrets:
+            section = st.secrets["supa_secrets"]
+        else:
+            st.error("❌ No se encontraron secretos de Supabase en secrets.toml")
+            return None
+            
+        # Intentar obtener con claves genéricas o específicas
+        url = section.get("URL") or section.get("SUPABASE_URL")
+        key = section.get("KEY") or section.get("SUPABASE_KEY")
 
-sheet = conectar_gsheet()
+        if not url or not key:
+            st.error("❌ Faltan las claves URL/KEY o SUPABASE_URL/SUPABASE_KEY en secrets.toml")
+            return None
+
+        return create_client(url, key)
+    except Exception as e:
+        st.error(f"Error conectando a Supabase: {e}")
+        return None
+
+supabase = init_connection()
 
 def cargar_datos():
-    if sheet:
-        data = sheet.get_all_records()
-        # Actualizamos columnas esperadas
-        columnas_esperadas = [
-            'x1', 'y1', 'x2', 'y2', 'Zona', 'TipoFuga', 'Area', 'Ubicacion',
-            'ID_Maquina', 'Severidad', 'Categoria', 'L_min', 'CostoAnual', 'Estado'
-        ]
-        if data:
-            df = pd.DataFrame(data)
-            for col in columnas_esperadas:
-                if col not in df.columns:
-                    df[col] = "N/A"
-            return df
-        return pd.DataFrame(columns=columnas_esperadas)
+    if supabase:
+        try:
+            # Usar esquema public por defecto
+            response = supabase.table("fugas").select("*").execute()
+            data = response.data
+            
+            # Columnas esperadas en la App (Mayúsculas/CamelCase)
+            columnas_app = [
+                'id', 'x1', 'y1', 'x2', 'y2', 'Zona', 'TipoFuga', 'Area', 'Ubicacion',
+                'ID_Maquina', 'Severidad', 'Categoria', 'L_min', 'CostoAnual', 'Estado'
+            ]
+            
+            if data:
+                df = pd.DataFrame(data)
+                
+                # Normalizar columnas de entrada a minúsculas
+                df.columns = [c.lower() for c in df.columns]
+                
+                # Mapa de minúsculas -> Nombre en App
+                rename_map = {
+                    'zona': 'Zona', 
+                    'tipofuga': 'TipoFuga', 'tipo_fuga': 'TipoFuga', # Soporte para ambos casos
+                    'area': 'Area', 
+                    'ubicacion': 'Ubicacion', 
+                    'id_maquina': 'ID_Maquina', 'idmaquina': 'ID_Maquina',
+                    'severidad': 'Severidad', 
+                    'categoria': 'Categoria', 
+                    'l_min': 'L_min', 'lmin': 'L_min',
+                    'costo_anual': 'CostoAnual', 'costoanual': 'CostoAnual',
+                    'estado': 'Estado',
+                    'x1': 'x1', 'y1': 'y1', 'x2': 'x2', 'y2': 'y2'
+                }
+                
+                df = df.rename(columns=rename_map)
+                
+                # Asegurar que existan todas las columnas esperadas
+                for col in columnas_app:
+                    if col not in df.columns:
+                        df[col] = "N/A"
+                return df
+                
+            return pd.DataFrame(columns=columnas_app)
+        except Exception as e:
+            st.error(f"Error cargando datos: {e}")
+            return pd.DataFrame()
+            
     return pd.DataFrame()
 
 if 'dfZonas' not in st.session_state:
@@ -89,17 +139,38 @@ def editar_registro(index, datos_actuales):
                                   index=["En proceso de reparar", "Dañada", "Completada"].index(datos_actuales.get('Estado', 'Dañada')) if datos_actuales.get('Estado') in ["En proceso de reparar", "Dañada", "Completada"] else 1)
 
     if st.button("💾 Guardar Cambios"):
-        fila_num = index + 2
-        sheet.update_cell(fila_num, 5, nuevo_n)
-        sheet.update_cell(fila_num, 7, nuevo_a)
-        sheet.update_cell(fila_num, 10, nueva_sev)
-        sheet.update_cell(fila_num, 11, nueva_cat)
-        sheet.update_cell(fila_num, 12, nueva_medida)
-        sheet.update_cell(fila_num, 13, nuevo_costo)
-        sheet.update_cell(fila_num, 14, nuevo_estado)
-        st.success("¡Actualizado!")
-        st.session_state.dfZonas = cargar_datos()
-        st.rerun()
+        try:
+            id_registro = datos_actuales.get('id')
+            
+            # Limpieza básica de l_min para ajustarse a float8
+            val_lmin = 0.0
+            try:
+                val_str = str(nueva_medida).replace('I/min', '').strip()
+                if '-' in val_str:
+                    p = val_str.split('-')
+                    val_lmin = (float(p[0]) + float(p[1]))/2
+                else:
+                    val_lmin = float(val_str)
+            except: pass
+
+            update_data = {
+                'zona': nuevo_n,
+                'area': nuevo_a,
+                'severidad': nueva_sev,
+                'categoria': nueva_cat,
+                'l_min': val_lmin,
+                'costo_anual': float(nuevo_costo),
+                'estado': nuevo_estado,
+                'ubicacion': nueva_ubi
+            }
+            
+            supabase.table('fugas').update(update_data).eq('id', id_registro).execute()
+            
+            st.success("¡Actualizado!")
+            st.session_state.dfZonas = cargar_datos()
+            st.rerun()
+        except Exception as e:
+            st.error(f"Error al actualizar: {e}")
 
 ## ventana emergente de planop de referencia  ###
 @st.dialog("📥 Descargar Plano de Alta Resolución")
@@ -176,11 +247,17 @@ with st.sidebar:
     filtro_fluidos = st.multiselect("Monitorear:", list(FLUIDOS.keys()), default=list(FLUIDOS.keys()))
     # --- NUEVOS FILTROS GLOBALES ---
     # 1. Filtro por Estado
-    estados_disponibles = sorted(st.session_state.dfZonas['Estado'].unique())
+    if not st.session_state.dfZonas.empty and 'Estado' in st.session_state.dfZonas.columns:
+        estados_disponibles = sorted(st.session_state.dfZonas['Estado'].unique())
+    else:
+        estados_disponibles = []
     filtro_estados = st.multiselect("Estado de Fuga:", estados_disponibles, default=estados_disponibles)
 
     # 2. Filtro por Área de Planta
-    areas_disponibles = sorted(st.session_state.dfZonas['Area'].unique())
+    if not st.session_state.dfZonas.empty and 'Area' in st.session_state.dfZonas.columns:
+        areas_disponibles = sorted(st.session_state.dfZonas['Area'].unique())
+    else:
+        areas_disponibles = []
     filtro_areas = st.multiselect("Área de Planta:", areas_disponibles, default=areas_disponibles)
 
     # 3. Filtro por Rango de Fechas (Basado en la columna 'Zona')
@@ -190,6 +267,13 @@ with st.sidebar:
     busqueda_fecha = st.text_input("🔍 Buscar Fecha (ej: 2026)")
 
     st.success("Conexión: Cloud Sync ✅")
+
+    if st.button("🔄 Recargar Datos (Borrar Caché)"):
+        st.cache_resource.clear()
+        st.cache_data.clear()
+        if 'dfZonas' in st.session_state:
+            del st.session_state['dfZonas']
+        st.rerun()
 
     # --- FIRMA DE AUTOR (Movida al Sidebar) ---
     st.markdown(f"""
@@ -201,20 +285,31 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # --- Lógica de Triple Filtrado ---
-df_filtrado = st.session_state.dfZonas[
-    (st.session_state.dfZonas['TipoFuga'].isin(filtro_fluidos)) &
-    (st.session_state.dfZonas['Estado'].isin(filtro_estados)) &
-    (st.session_state.dfZonas['Area'].isin(filtro_areas))
-]
+if not st.session_state.dfZonas.empty and 'TipoFuga' in st.session_state.dfZonas.columns:
+    df_filtrado = st.session_state.dfZonas[
+        (st.session_state.dfZonas['TipoFuga'].isin(filtro_fluidos)) &
+        (st.session_state.dfZonas['Estado'].isin(filtro_estados)) &
+        (st.session_state.dfZonas['Area'].isin(filtro_areas))
+    ]
+else:
+    df_filtrado = pd.DataFrame(columns=st.session_state.dfZonas.columns)
 
 # Aplicar búsqueda de fecha si el usuario escribió algo
-if busqueda_fecha:
+if busqueda_fecha and not df_filtrado.empty:
     df_filtrado = df_filtrado[df_filtrado['Zona'].str.contains(busqueda_fecha, case=False, na=False)]
 
 # --- 6. TABS ---
 tabMapa, tabConfig, tabReporte = st.tabs(["📍 Mapa", "⚙️ Gestión", "📊 Reporte"])
 
 with tabMapa:
+    # DEBUG: Mostrar qué está llegando realmente
+    # st.write("Datos cargados:", len(df_filtrado))
+    # st.dataframe(df_filtrado.head())
+
+    if df_filtrado.empty:
+        st.warning("⚠️ No hay datos cargados. Revisa la conexión a Supabase o si la tabla está vacía.")
+        st.stop()
+        
     # --- MÉTRICAS ACTUALIZADAS ---
     m1, m2, m3, m4, m5 = st.columns(5) # Añadimos m5
 
@@ -271,6 +366,9 @@ with tabMapa:
         max_zoom=4     # Permite mucho acercamiento
     )
 
+
+    m.get_root().header.add_child(folium.Element(marker_style))
+
     ImageOverlay(
         image="PlanoHanon.webp",
         bounds=[[0, 0], [alto_real, ancho_real]],
@@ -304,6 +402,7 @@ with tabMapa:
 
         f_info = FLUIDOS.get(row['TipoFuga'], {"color": "white", "marker": "red", "emoji": "⚠️"})
         color_sev = {"Alta": "#FF4B4B", "Media": "#FFA500", "Baja": "#28A745"}.get(row['Severidad'], "#333")
+
 
         # --- LÓGICA DE UBICACIÓN ---
         ubi = row.get('Ubicacion', 'Terrestre') # 'Ubicacion' debe ser el nombre de tu columna en GSheets
@@ -514,27 +613,41 @@ with tabConfig:
 
     if st.button("🚰📝 Record leak", use_container_width=True):
             if coords_dibujadas and n_z:
-                # Creamos la lista para enviar a la fila
-                # IMPORTANTE: Reemplazamos "N/A" por tipo_ubicacion
-                fila_a_guardar = [
-                    coords_dibujadas['x1'], coords_dibujadas['y1'],
-                    coords_dibujadas['x2'], coords_dibujadas['y2'],
-                    n_z,             # Columna E: Zona
-                    t_f,             # Columna F: TipoFuga
-                    area_p,          # Columna G: Area
-                    tipo_ubicacion,  # Columna H: Ubicacion (ANTES DECÍA "N/A")
-                    id_m,            # Columna I: ID_Maquina
-                    sev_p,           # Columna J: Severidad
-                    cat_f,           # Columna K: Categoria
-                    med_f,           # Columna L: L_min
-                    cost_f,          # Columna M: CostoAnual
-                    est_f            # Columna N: Estado
-                ]
+                try:
+                    # Parsear L_min a float
+                    val_lmin = 0.0
+                    try:
+                        val_str = str(med_f).replace('I/min', '').strip()
+                        if '-' in val_str:
+                            p = val_str.split('-')
+                            val_lmin = (float(p[0]) + float(p[1]))/2
+                        else:
+                            val_lmin = float(val_str)
+                    except: pass
 
-                sheet.append_row(fila_a_guardar)
-                st.session_state.dfZonas = cargar_datos()
-                st.success(f"✅ Fuga en {n_z} ({tipo_ubicacion}) registrada.")
-                st.rerun()
+                    insert_data = {
+                        'x1': coords_dibujadas['x1'],
+                        'y1': coords_dibujadas['y1'],
+                        'x2': coords_dibujadas['x2'],
+                        'y2': coords_dibujadas['y2'],
+                        'zona': n_z,
+                        'tipo_fuga': t_f,
+                        'area': area_p,
+                        'ubicacion': tipo_ubicacion,
+                        'id_maquina': id_m,
+                        'severidad': sev_p,
+                        'categoria': cat_f,
+                        'l_min': val_lmin,
+                        'costo_anual': float(cost_f),
+                        'estado': est_f
+                    }
+
+                    supabase.table('fugas').insert(insert_data).execute()
+                    st.session_state.dfZonas = cargar_datos()
+                    st.success(f"✅ Fuga en {n_z} ({tipo_ubicacion}) registrada.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error guardando registro: {e}")
     else:
         st.warning("⚠️ Asegúrate de dibujar el área y poner un nombre a la zona.")
 
@@ -595,9 +708,13 @@ with tabConfig:
                         if st.button("✏️ Editar", key=f"ed_{idx}", use_container_width=True): editar_registro(idx, r)
                     with b2:
                         if st.button("🗑️ Borrar", key=f"del_{idx}", use_container_width=True):
-                            sheet.delete_rows(idx+2)
-                            st.session_state.dfZonas = cargar_datos()
-                            st.rerun()
+                            try:
+                                rec_id = r['id']
+                                supabase.table('fugas').delete().eq('id', rec_id).execute()
+                                st.session_state.dfZonas = cargar_datos()
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error al borrar: {e}")
     else:
         st.info("No se encontraron registros con los filtros actuales.")
 
@@ -834,11 +951,3 @@ st.markdown(f"""<div style="text-align: center; color: #888; background-color: #
     <p><b>Developed by:</b> Master Engineer Erik Armenta</p>
     <p style="font-style: italic; color: #5271ff;">"Accuracy is our signature, and innovation is our nature."</p>
 </div>""", unsafe_allow_html=True)
-
-
-
-
-
-
-
-
