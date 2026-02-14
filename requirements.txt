@@ -6,4 +6,5 @@ gspread
 folium
 streamlit-folium
 altair
+supabase==2.3.0
 
