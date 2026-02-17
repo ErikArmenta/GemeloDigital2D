@@ -100,6 +100,31 @@ def cargar_datos():
             
     return pd.DataFrame()
 
+# --- CALLBACKS ---
+def borrar_fuga_callback(id_registro):
+    try:
+        supabase.table('fugas').delete().eq('id', id_registro).execute()
+        st.session_state.dfZonas = cargar_datos()
+        st.success(f"Registro {id_registro} eliminado.")
+    except Exception as e:
+        st.error(f"Error al borrar: {e}")
+
+def registrar_fuga_callback(insert_data):
+    try:
+        supabase.table('fugas').insert(insert_data).execute()
+        st.session_state.dfZonas = cargar_datos()
+        st.success(f"✅ Fuga registrada exitosamente.")
+    except Exception as e:
+        st.error(f"Error guardando registro: {e}")
+
+def actualizar_fuga_callback(id_registro, update_data):
+    try:
+        supabase.table('fugas').update(update_data).eq('id', id_registro).execute()
+        st.session_state.dfZonas = cargar_datos()
+        st.success("¡Actualizado!")
+    except Exception as e:
+        st.error(f"Error al actualizar: {e}")
+
 if 'dfZonas' not in st.session_state:
     st.session_state.dfZonas = cargar_datos()
 
@@ -164,10 +189,9 @@ def editar_registro(index, datos_actuales):
                 'ubicacion': nueva_ubi
             }
             
-            supabase.table('fugas').update(update_data).eq('id', id_registro).execute()
-            
-            st.success("¡Actualizado!")
-            st.session_state.dfZonas = cargar_datos()
+            # Usamos el callback directamente aquí, aunque técnicamente podríamos pasarlo a on_click
+            # Dado que los valores nuevo_n, etc. están en el scope local del dialogo, es más fácil llamar a la función de lógica
+            actualizar_fuga_callback(id_registro, update_data)
             st.rerun()
         except Exception as e:
             st.error(f"Error al actualizar: {e}")
@@ -459,7 +483,7 @@ with tabMapa:
             icon=folium.Icon(color=f_info['marker'], icon=icono_mapa, extra_params=f'class="{clase_css}"')
         ).add_to(m)
 
-    st_folium(m, width=1400, height=750, use_container_width=True)
+    st_folium(m, width=1400, height=750, use_container_width=True, returned_objects=[])
 
 
 
@@ -539,7 +563,7 @@ with tabConfig:
 
     # Capturamos la salida del mapa con dibujo
     # Nota: mantenemos el key original "draw_map"
-    output = st_folium(m2, width=1200, height=600, key="draw_map")
+    output = st_folium(m2, width=1200, height=600, key="draw_map", returned_objects=["all_drawings"])
 
     coords_dibujadas = None
     if output["all_drawings"]:
@@ -611,44 +635,44 @@ with tabConfig:
 
         est_f = st.selectbox("Estado Inicial", opciones_estado, index=len(opciones_estado)-1)
 
-    if st.button("🚰📝 Record leak", use_container_width=True):
-            if coords_dibujadas and n_z:
-                try:
-                    # Parsear L_min a float
-                    val_lmin = 0.0
-                    try:
-                        val_str = str(med_f).replace('I/min', '').strip()
-                        if '-' in val_str:
-                            p = val_str.split('-')
-                            val_lmin = (float(p[0]) + float(p[1]))/2
-                        else:
-                            val_lmin = float(val_str)
-                    except: pass
+    # Preparamos los datos para la inserción fuera del botón
+    insert_data = {}
+    if coords_dibujadas and n_z:
+        try:
+            # Parsear L_min a float
+            val_lmin = 0.0
+            try:
+                val_str = str(med_f).replace('I/min', '').strip()
+                if '-' in val_str:
+                    p = val_str.split('-')
+                    val_lmin = (float(p[0]) + float(p[1]))/2
+                else:
+                    val_lmin = float(val_str)
+            except: pass
 
-                    insert_data = {
-                        'x1': coords_dibujadas['x1'],
-                        'y1': coords_dibujadas['y1'],
-                        'x2': coords_dibujadas['x2'],
-                        'y2': coords_dibujadas['y2'],
-                        'zona': n_z,
-                        'tipo_fuga': t_f,
-                        'area': area_p,
-                        'ubicacion': tipo_ubicacion,
-                        'id_maquina': id_m,
-                        'severidad': sev_p,
-                        'categoria': cat_f,
-                        'l_min': val_lmin,
-                        'costo_anual': float(cost_f),
-                        'estado': est_f
-                    }
+            insert_data = {
+                'x1': coords_dibujadas['x1'],
+                'y1': coords_dibujadas['y1'],
+                'x2': coords_dibujadas['x2'],
+                'y2': coords_dibujadas['y2'],
+                'zona': n_z,
+                'tipo_fuga': t_f,
+                'area': area_p,
+                'ubicacion': tipo_ubicacion,
+                'id_maquina': id_m,
+                'severidad': sev_p,
+                'categoria': cat_f,
+                'l_min': val_lmin,
+                'costo_anual': float(cost_f),
+                'estado': est_f
+            }
+        except: pass
 
-                    supabase.table('fugas').insert(insert_data).execute()
-                    st.session_state.dfZonas = cargar_datos()
-                    st.success(f"✅ Fuga en {n_z} ({tipo_ubicacion}) registrada.")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error guardando registro: {e}")
-    else:
+    # Botón con callback
+    if st.button("🚰📝 Record leak", use_container_width=True, on_click=registrar_fuga_callback, args=(insert_data,)) if (coords_dibujadas and n_z) else None:
+        pass
+    
+    if not (coords_dibujadas and n_z):
         st.warning("⚠️ Asegúrate de dibujar el área y poner un nombre a la zona.")
 
     st.subheader("📋 Historial de Gestión")
@@ -707,14 +731,7 @@ with tabConfig:
                     with b1:
                         if st.button("✏️ Editar", key=f"ed_{idx}", use_container_width=True): editar_registro(idx, r)
                     with b2:
-                        if st.button("🗑️ Borrar", key=f"del_{idx}", use_container_width=True):
-                            try:
-                                rec_id = r['id']
-                                supabase.table('fugas').delete().eq('id', rec_id).execute()
-                                st.session_state.dfZonas = cargar_datos()
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Error al borrar: {e}")
+                        st.button("🗑️ Borrar", key=f"del_{idx}", use_container_width=True, on_click=borrar_fuga_callback, args=(r['id'],))
     else:
         st.info("No se encontraron registros con los filtros actuales.")
 
