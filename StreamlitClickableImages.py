@@ -323,9 +323,9 @@ if busqueda_fecha and not df_filtrado.empty:
     df_filtrado = df_filtrado[df_filtrado['Zona'].str.contains(busqueda_fecha, case=False, na=False)]
 
 # --- 6. TABS ---
-selection = st.segmented_control(label='Navegación', options=['📍 Mapa', '⚙️ Gestión', '📊 Reporte'], default='📍 Mapa')
+tabMapa, tabConfig, tabReporte = st.tabs(["📍 Mapa", "⚙️ Gestión", "📊 Reporte"])
 
-if selection == '📍 Mapa':
+with tabMapa:
     # DEBUG: Mostrar qué está llegando realmente
     # st.write("Datos cargados:", len(df_filtrado))
     # st.dataframe(df_filtrado.head())
@@ -487,7 +487,7 @@ if selection == '📍 Mapa':
 
 
 
-elif selection == '⚙️ Gestión':
+with tabConfig:
     st.markdown("##### 1. Referencia de Alta Precisión (16K)")
 
     col_btn_1, col_btn_2 = st.columns([1, 2])
@@ -735,7 +735,7 @@ elif selection == '⚙️ Gestión':
     else:
         st.info("No se encontraron registros con los filtros actuales.")
 
-elif selection == '📊 Reporte':
+with tabReporte:
     st.subheader("📊 Panel de Control Operativo")
 
     # --- TODO DENTRO DE ESTE IF ---
