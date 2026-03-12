@@ -952,7 +952,34 @@ with tabReporte:
 
         with d_col3:
             # --- MAPA INTERACTIVO (HTML) ---
-            m.save("mapa_interactivo.html")
+            # Crear mapa folium independiente para exportación
+            m_export = folium.Map(
+                location=[alto_real / 2, ancho_real / 2],
+                zoom_start=-1,
+                crs="Simple",
+                min_zoom=-2,
+                max_zoom=4
+            )
+            ImageOverlay(
+                image="PlanoHanon.webp",
+                bounds=[[0, 0], [alto_real, ancho_real]],
+                opacity=0.8
+            ).add_to(m_export)
+
+            # Agregar marcadores al mapa de exportación
+            for _, row in df_filtrado.iterrows():
+                factor_x = ancho_real / 1200
+                factor_y = alto_real / (1200 * (alto_real / ancho_real))
+                cx = (row['x1'] + row['x2']) / 2 * factor_x
+                cy = alto_real - ((row['y1'] + row['y2']) / 2 * factor_y)
+                f_info = FLUIDOS.get(row['TipoFuga'], {"color": "white", "marker": "red", "emoji": "⚠️"})
+                folium.Marker(
+                    location=[cy, cx],
+                    popup=f"{row['Area']} - {row['TipoFuga']}",
+                    icon=folium.Icon(color=f_info['marker'], icon="info-sign")
+                ).add_to(m_export)
+
+            m_export.save("mapa_interactivo.html")
             with open("mapa_interactivo.html", "rb") as f:
                 st.download_button(
                     label="🗺️ Plano Interactivo",
