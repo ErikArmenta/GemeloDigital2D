@@ -234,25 +234,6 @@ def mostrar_qr(registro_actual, base_url):
         st.image(qr_img_url, caption="Escanea para ir a Edición", use_container_width=True)
     st.code(target_link, language="text")
 
-# --- LÓGICA DE DEEP-LINKING ---
-# Si un técnico escanea el código, la URL vendrá con ?fuga_id=XYZ
-if 'fuga_id' in st.query_params:
-    id_buscado = str(st.query_params['fuga_id'])
-    
-    # Limpiamos los query params para que no vuelva a abrirse tras modificar
-    st.query_params.clear()
-    
-    # Buscamos en el DataFrame actual si existe ese ID
-    if not st.session_state.dfZonas.empty:
-        df_match = st.session_state.dfZonas[st.session_state.dfZonas['id'].astype(str) == id_buscado]
-        if not df_match.empty:
-            registro_match = df_match.iloc[0]
-            # Lanzamos manualmente el componente dialógo
-            editar_registro(registro_match.name, registro_match)
-        else:
-            st.error(f"❌ La Fuga ID {id_buscado} no existe o fue eliminada.")
-
-
 # --- 4. CONFIGURACIÓN VISUAL ---
 # --- Configuarcion de formulas de categorias por fluido ---
 RELACION_FUGAS = {
@@ -298,6 +279,24 @@ FLUIDOS = {
     "Aceite": {"color": "#FFFF00", "emoji": "🛢️", "marker": "darkred"},
     "Inspección (OK)": {"color": "#28A745", "emoji": "✅", "marker": "green"}  # Nuevo
 }
+
+# --- LÓGICA DE DEEP-LINKING ---
+# Si un técnico escanea el código, la URL vendrá con ?fuga_id=XYZ
+if 'fuga_id' in st.query_params:
+    id_buscado = str(st.query_params['fuga_id'])
+    
+    # Limpiamos los query params para que no vuelva a abrirse tras modificar
+    st.query_params.clear()
+    
+    # Buscamos en el DataFrame actual si existe ese ID
+    if not st.session_state.dfZonas.empty:
+        df_match = st.session_state.dfZonas[st.session_state.dfZonas['id'].astype(str) == id_buscado]
+        if not df_match.empty:
+            registro_match = df_match.iloc[0]
+            # Lanzamos manualmente el componente dialógo
+            editar_registro(registro_match.name, registro_match)
+        else:
+            st.error(f"❌ La Fuga ID {id_buscado} no existe o fue eliminada.")
 
 img_original = Image.open("PlanoHanon.webp")
 ancho_real, alto_real = img_original.size
