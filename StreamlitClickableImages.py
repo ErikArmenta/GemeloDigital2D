@@ -61,7 +61,7 @@ def cargar_datos():
             # Columnas esperadas en la App (Mayúsculas/CamelCase)
             columnas_app = [
                 'id', 'x1', 'y1', 'x2', 'y2', 'Zona', 'TipoFuga', 'Area', 'Ubicacion',
-                'ID_Maquina', 'Severidad', 'Categoria', 'L_min', 'CostoAnual', 'Estado'
+                'ID_Maquina', 'Severidad', 'Categoria', 'L_min', 'CostoAnual', 'Estado', 'Comentarios'
             ]
             
             if data:
@@ -82,6 +82,7 @@ def cargar_datos():
                     'l_min': 'L_min', 'lmin': 'L_min',
                     'costo_anual': 'CostoAnual', 'costoanual': 'CostoAnual',
                     'estado': 'Estado',
+                    'comentarios': 'Comentarios', 'comentario': 'Comentarios',
                     'x1': 'x1', 'y1': 'y1', 'x2': 'x2', 'y2': 'y2'
                 }
                 
@@ -163,6 +164,8 @@ def editar_registro(index, datos_actuales):
         nuevo_estado = st.selectbox("Estado", ["En proceso de reparar", "Dañada", "Completada"],
                                   index=["En proceso de reparar", "Dañada", "Completada"].index(datos_actuales.get('Estado', 'Dañada')) if datos_actuales.get('Estado') in ["En proceso de reparar", "Dañada", "Completada"] else 1)
 
+    nuevo_comentario = st.text_area("Comentarios / Observaciones", value=str(datos_actuales.get('Comentarios', '')), height=100)
+
     if st.button("💾 Guardar Cambios"):
         try:
             id_registro = datos_actuales.get('id')
@@ -186,7 +189,8 @@ def editar_registro(index, datos_actuales):
                 'l_min': val_lmin,
                 'costo_anual': float(nuevo_costo),
                 'estado': nuevo_estado,
-                'ubicacion': nueva_ubi
+                'ubicacion': nueva_ubi,
+                'comentarios': nuevo_comentario
             }
             
             # Usamos el callback directamente aquí, aunque técnicamente podríamos pasarlo a on_click
@@ -212,6 +216,41 @@ def dialogo_descarga_plano():
         )
     if btn:
         st.success("Descarga iniciada. Ábrelo en tu visualizador de imágenes para máximo zoom.")
+
+# --- DIÁLOGO DE QR INTELIGENTE ---
+@st.dialog("🖨️ Etiqueta QR Inteligente")
+def mostrar_qr(registro_actual, base_url):
+    st.write(f"**ID de Fuga:** {registro_actual['id']} | **Máquina:** {registro_actual.get('ID_Maquina', 'N/A')}")
+    st.info("Imprime o escanea este código para acceder directamente a la ficha técnica de esta fuga desde cualquier dispositivo.")
+    
+    # Construimos la URL completa para el escaneo
+    target_link = f"{base_url.rstrip('/')}/?fuga_id={registro_actual['id']}"
+    
+    # Usamos la API pública y gratuita de qrserver para generar la imagen
+    qr_img_url = f"https://api.qrserver.com/v1/create-qr-code/?size=250x250&data={target_link}"
+    
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        st.image(qr_img_url, caption="Escanea para ir a Edición", use_container_width=True)
+    st.code(target_link, language="text")
+
+# --- LÓGICA DE DEEP-LINKING ---
+# Si un técnico escanea el código, la URL vendrá con ?fuga_id=XYZ
+if 'fuga_id' in st.query_params:
+    id_buscado = str(st.query_params['fuga_id'])
+    
+    # Limpiamos los query params para que no vuelva a abrirse tras modificar
+    st.query_params.clear()
+    
+    # Buscamos en el DataFrame actual si existe ese ID
+    if not st.session_state.dfZonas.empty:
+        df_match = st.session_state.dfZonas[st.session_state.dfZonas['id'].astype(str) == id_buscado]
+        if not df_match.empty:
+            registro_match = df_match.iloc[0]
+            # Lanzamos manualmente el componente dialógo
+            editar_registro(registro_match.name, registro_match)
+        else:
+            st.error(f"❌ La Fuga ID {id_buscado} no existe o fue eliminada.")
 
 
 # --- 4. CONFIGURACIÓN VISUAL ---
@@ -283,6 +322,11 @@ with st.sidebar:
     else:
         areas_disponibles = []
     filtro_areas = st.multiselect("Área de Planta:", areas_disponibles, default=areas_disponibles)
+
+    # 3. URL Base para Códigos QR
+    st.markdown("---")
+    st.markdown("**🔗 Configuración QR**")
+    base_url_qr = st.text_input("URL de este Dashboard", value="https://gemelodigital2d.streamlit.app", help="Cambia esto por el enlace público real de tu App para que funcione desde teléfonos móviles.")
 
     # 3. Filtro por Rango de Fechas (Basado en la columna 'Zona')
     st.info("📅 El filtro de fechas aplica al registro guardado.")
@@ -437,7 +481,8 @@ with tabMapa:
         <div style="background-color:#1d2129; color:white; padding:10px; border-radius:8px; border-left:5px solid {f_info['color']}; min-width:150px;">
             <b>{f_info['emoji']} {row['Area']}</b><br>
             <span style="color:#bdc3c7; font-size:0.85em;">{ubi_emoji} Instalación: {ubi}</span><br>
-            <span style="color:{color_sev}; font-size:0.9em;">Severidad: {row['Severidad']}</span>
+            <span style="color:{color_sev}; font-size:0.9em;">Severidad: {row['Severidad']}</span><br>
+            <span style="color:#bdc3c7; font-size:0.85em;"><i>{str(row.get('Comentarios', ''))[:50] + '...' if len(str(row.get('Comentarios', ''))) > 50 else str(row.get('Comentarios', ''))}</i></span>
         </div>"""
 
 # Popup (Clic) - Cambiamos "Zona" por "Área de Planta"
@@ -450,11 +495,12 @@ with tabMapa:
                 <tr><td><b>Área de Planta:</b></td><td>{row['Area']}</td></tr>
                 <tr><td><b>Instalación:</b></td><td>{ubi_emoji} {ubi}</td></tr>
                 <tr><td><b>Estado:</b></td><td><b>{row.get('Estado', 'N/A')}</b></td></tr>
-                <tr><td><b>Categoría:</b></td><td>{row.get('Categoria', 'N/A')}</td></tr>
+                <tr><td><b>Categoria:</b></td><td>{row.get('Categoria', 'N/A')}</td></tr>
                 <tr><td><b>Caudal:</b></td><td>{row.get('L_min', 'N/A')} I/min</td></tr>
                 <tr><td><b>Costo/Año:</b></td><td style="color:#d9534f; font-weight:bold;">${row.get('CostoAnual', '0')} USD</td></tr>
                 <tr><td><b>Severidad:</b></td><td style="color:{color_sev}; font-weight:bold;">{row['Severidad']}</td></tr>
                 <tr><td><b>Fechas:</b></td><td>{row['Zona']}</td></tr>
+                <tr><td colspan="2" style="border-top:1px solid #ddd; padding-top:5px;"><b>Comentarios:</b><br/>{row.get('Comentarios', '')}</td></tr>
             </table>
         </div>
         """
@@ -635,6 +681,9 @@ with tabConfig:
 
         est_f = st.selectbox("Estado Inicial", opciones_estado, index=len(opciones_estado)-1)
 
+    # Added at user request: field for Comments inside tab2
+    comentarios_f = st.text_area("Comentarios / Observaciones", placeholder="Escribe un comentario detallado sobre esta fuga o inspección...", height=100)
+
     # Preparamos los datos para la inserción fuera del botón
     insert_data = {}
     if coords_dibujadas and n_z:
@@ -664,7 +713,8 @@ with tabConfig:
                 'categoria': cat_f,
                 'l_min': val_lmin,
                 'costo_anual': float(cost_f),
-                'estado': est_f
+                'estado': est_f,
+                'comentarios': comentarios_f
             }
         except: pass
 
@@ -725,13 +775,18 @@ with tabConfig:
 
                     st.caption(f"🆔 {r['ID_Maquina']} | 📍 {r['Area']}")
                     st.write(f"**Estado:** {r['Estado']}")
+                    
+                    if r.get('Comentarios') and str(r['Comentarios']).strip() != '' and str(r['Comentarios']).lower() != 'nan':
+                        st.info(f"📝 {str(r['Comentarios'])[:80]}..." if len(str(r['Comentarios'])) > 80 else f"📝 {r['Comentarios']}")
 
                     # Botones de Acción
-                    b1, b2 = st.columns(2)
+                    b1, b2, b3 = st.columns(3)
                     with b1:
-                        if st.button("✏️ Editar", key=f"ed_{idx}", use_container_width=True): editar_registro(idx, r)
+                        if st.button("✏️", key=f"ed_{idx}", use_container_width=True, help="Editar Registro"): editar_registro(idx, r)
                     with b2:
-                        st.button("🗑️ Borrar", key=f"del_{idx}", use_container_width=True, on_click=borrar_fuga_callback, args=(r['id'],))
+                        if st.button("🖨️", key=f"qr_{idx}", use_container_width=True, help="Generar Código QR"): mostrar_qr(r, base_url_qr)
+                    with b3:
+                        st.button("🗑️", key=f"del_{idx}", use_container_width=True, on_click=borrar_fuga_callback, args=(r['id'],), help="Eliminar Registro")
     else:
         st.info("No se encontraron registros con los filtros actuales.")
 
