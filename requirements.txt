@@ -7,5 +7,6 @@ folium
 streamlit-folium
 altair
 supabase>=2.13.0
+streamlit-option-menu
 
 
