@@ -145,29 +145,29 @@ def editar_registro(index, datos_actuales):
     cat_list_edit = list(dict_edit.keys())
 
     with col_ed1:
-        nuevo_n = st.text_input("Nombre Zona", value=str(datos_actuales['Zona']), on_change=form_callback)
+        nuevo_n = st.text_input("Nombre Zona", value=str(datos_actuales['Zona']))
         cat_val = datos_actuales.get('Categoria', 'Fuga A')
 
         # Validamos que la categoría exista para ese fluido
         idx_ed = cat_list_edit.index(cat_val) if cat_val in cat_list_edit else 0
-        nueva_cat = st.selectbox("Categoría", cat_list_edit, index=idx_ed, on_change=form_callback)
+        nueva_cat = st.selectbox("Categoría", cat_list_edit, index=idx_ed)
 
         nueva_medida = dict_edit[nueva_cat]["l_min"]
-        st.text_input("I/min", value=nueva_medida, disabled=True, on_change=form_callback)
+        st.text_input("I/min", value=nueva_medida, disabled=True)
 
     with col_ed2:
-        nuevo_a = st.text_input("Área", value=str(datos_actuales.get('Area', 'N/A')), on_change=form_callback)
-        nueva_sev = st.select_slider("Severidad", options=["Baja", "Media", "Alta"], value=datos_actuales.get('Severidad', 'Media'), on_change=form_callback)
+        nuevo_a = st.text_input("Área", value=str(datos_actuales.get('Area', 'N/A')))
+        nueva_sev = st.select_slider("Severidad", options=["Baja", "Media", "Alta"], value=datos_actuales.get('Severidad', 'Media'))
 
         nuevo_costo = dict_edit[nueva_cat]["costo"]
-        st.text_input("Costo por año (USD)", value=str(nuevo_costo), disabled=True, on_change=form_callback)
+        st.text_input("Costo por año (USD)", value=str(nuevo_costo), disabled=True)
         ubi_index = 0 if datos_actuales.get('Ubicacion') == "Terrestre" else 1
-        nueva_ubi = st.radio("Tipo de Instalación", ["Terrestre", "Aérea"], index=ubi_index, horizontal=True, on_change=form_callback)
+        nueva_ubi = st.radio("Tipo de Instalación", ["Terrestre", "Aérea"], index=ubi_index, horizontal=True)
 
         nuevo_estado = st.selectbox("Estado", ["En proceso de reparar", "Dañada", "Completada"],
-                                  index=["En proceso de reparar", "Dañada", "Completada"].index(datos_actuales.get('Estado', 'Dañada')) if datos_actuales.get('Estado') in ["En proceso de reparar", "Dañada", "Completada"] else 1, on_change=form_callback)
+                                  index=["En proceso de reparar", "Dañada", "Completada"].index(datos_actuales.get('Estado', 'Dañada')) if datos_actuales.get('Estado') in ["En proceso de reparar", "Dañada", "Completada"] else 1)
 
-    nuevo_comentario = st.text_area("Comentarios / Observaciones", value=str(datos_actuales.get('Comentarios', '')), height=100, on_change=form_callback)
+    nuevo_comentario = st.text_area("Comentarios / Observaciones", value=str(datos_actuales.get('Comentarios', '')), height=100)
 
     if st.button("💾 Guardar Cambios"):
         try:
@@ -535,13 +535,92 @@ with tabMapa:
 
 
 
+# --- FRAGMENTS OPTIMIZACIÓN ---
+@st.fragment
+def boton_plano_frag():
+    if st.button("🔍 Obtener Plano 16K", use_container_width=True):
+        dialogo_descarga_plano()
+
+@st.fragment
+def formulario_ingreso_frag(coords_dibujadas):
+    # --- FORMULARIO EXTENDIDO ---
+    col1, col2, col3 = st.columns(3)
+    with col1:
+            t_f = st.selectbox("Fluido", list(FLUIDOS.keys()))
+            f_inicio = st.date_input("📅 Fecha de Inicio", value=datetime.now())
+            f_termino = st.date_input("📅 Fecha Estimada Término", value=datetime.now())
+            n_z = f"{f_inicio.strftime('%d/%m/%Y')} - {f_termino.strftime('%d/%m/%Y')}"
+            dict_actual = RELACION_FUGAS.get(t_f, RELACION_FUGAS["Aire"])
+            cat_list_dinamica = list(dict_actual.keys())
+            cat_f = st.selectbox("Categoría Critica", cat_list_dinamica)
+
+    with col2:
+        id_m = st.text_input("ID Equipo / Máquina")
+        area_p = st.text_input("Área Planta")
+        med_f = dict_actual[cat_f]["l_min"]
+        st.selectbox("I/min (Estimación)", [med_f], index=0, disabled=True)
+
+    with col3:
+        sev_p = st.select_slider("Severidad Visual", options=["Baja", "Media", "Alta"], value="Media")
+        cost_f = dict_actual[cat_f]["costo"]
+        st.selectbox("Costo por año (USD)", [cost_f], index=0, disabled=True)
+        tipo_ubicacion = st.radio("Tipo de Instalación", ["Terrestre", "Aérea"], horizontal=True)
+        opciones_estado = ["En proceso de reparar", "Dañada", "Completada"]
+        if t_f == "Inspección (OK)":
+            opciones_estado = ["Completada"] 
+        est_f = st.selectbox("Estado Inicial", opciones_estado, index=len(opciones_estado)-1)
+
+    comentarios_f = st.text_area("Comentarios / Observaciones", placeholder="Escribe un comentario detallado sobre esta fuga o inspección...", height=100)
+
+    insert_data = {}
+    if coords_dibujadas and n_z:
+        try:
+            val_lmin = 0.0
+            try:
+                val_str = str(med_f).replace('I/min', '').strip()
+                if '-' in val_str:
+                    p = val_str.split('-')
+                    val_lmin = (float(p[0]) + float(p[1]))/2
+                else:
+                    val_lmin = float(val_str)
+            except: pass
+            insert_data = {
+                'x1': coords_dibujadas['x1'], 'y1': coords_dibujadas['y1'],
+                'x2': coords_dibujadas['x2'], 'y2': coords_dibujadas['y2'],
+                'zona': n_z, 'tipo_fuga': t_f, 'area': area_p, 'ubicacion': tipo_ubicacion,
+                'id_maquina': id_m, 'severidad': sev_p, 'categoria': cat_f,
+                'l_min': val_lmin, 'costo_anual': float(cost_f), 'estado': est_f,
+                'comentarios': comentarios_f
+            }
+        except: pass
+
+    if coords_dibujadas and n_z:
+        if st.button("🚰📝 Record leak", use_container_width=True):
+            registrar_fuga_callback(insert_data)
+            st.rerun()
+    else:
+        st.warning("⚠️ Asegúrate de dibujar el área y poner un nombre a la zona.")
+
+@st.fragment
+def botones_accion_frag(idx, r, base_url_qr):
+    b1, b2, b3 = st.columns(3)
+    with b1:
+        if st.button("✏️", key=f"ed_{idx}", use_container_width=True, help="Editar Registro"): 
+            editar_registro(idx, r)
+    with b2:
+        if st.button("🖨️", key=f"qr_{idx}", use_container_width=True, help="Generar Código QR"): 
+            mostrar_qr(r, base_url_qr)
+    with b3:
+        if st.button("🗑️", key=f"del_{idx}", use_container_width=True, help="Eliminar Registro"):
+            borrar_fuga_callback(r['id'])
+            st.rerun()
+
 with tabConfig:
     st.markdown("##### 1. Referencia de Alta Precisión (16K)")
 
     col_btn_1, col_btn_2 = st.columns([1, 2])
     with col_btn_1:
-        if st.button("🔍 Obtener Plano 16K", use_container_width=True):
-            dialogo_descarga_plano()
+        boton_plano_frag()
     with col_btn_2:
         st.info("Descarga el plano original para ver detalles técnicos sin pixelado antes de marcar.")
 
@@ -644,87 +723,7 @@ with tabConfig:
             st.success(f"Zona capturada: ({int(x1_stored)}, {int(y1_stored)}) - ({int(x2_stored)}, {int(y2_stored)})")
 
     st.markdown("---")
-    # --- FORMULARIO EXTENDIDO ---
-    col1, col2, col3 = st.columns(3)
-    with col1:
-            t_f = st.selectbox("Fluido", list(FLUIDOS.keys()), on_change=form_callback)
-
-            # CAMBIO: Reemplazamos Nombre de Zona por Fechas
-            f_inicio = st.date_input("📅 Fecha de Inicio", value=datetime.now(), on_change=form_callback)
-            f_termino = st.date_input("📅 Fecha Estimada Término", value=datetime.now(), on_change=form_callback)
-
-            # Convertimos las fechas a texto para guardarlas en GSheets
-            n_z = f"{f_inicio.strftime('%d/%m/%Y')} - {f_termino.strftime('%d/%m/%Y')}"
-
-            dict_actual = RELACION_FUGAS.get(t_f, RELACION_FUGAS["Aire"])
-            cat_list_dinamica = list(dict_actual.keys())
-            cat_f = st.selectbox("Categoría Critica", cat_list_dinamica, on_change=form_callback)
-
-    with col2:
-        id_m = st.text_input("ID Equipo / Máquina", on_change=form_callback)
-        area_p = st.text_input("Área Planta", on_change=form_callback)
-
-        # Estos valores se actualizan solos al cambiar el fluido o la categoría
-        med_f = dict_actual[cat_f]["l_min"]
-        st.selectbox("I/min (Estimación)", [med_f], index=0, disabled=True, on_change=form_callback)
-
-    with col3:
-        sev_p = st.select_slider("Severidad Visual", options=["Baja", "Media", "Alta"], value="Media", on_change=form_callback)
-
-        cost_f = dict_actual[cat_f]["costo"]
-        st.selectbox("Costo por año (USD)", [cost_f], index=0, disabled=True, on_change=form_callback)
-        tipo_ubicacion = st.radio("Tipo de Instalación", ["Terrestre", "Aérea"], horizontal=True, on_change=form_callback)
-
-        # Lógica para Estado según Fluido
-        opciones_estado = ["En proceso de reparar", "Dañada", "Completada"]
-        if t_f == "Inspección (OK)":
-            opciones_estado = ["Completada"] # Si es inspección, por defecto está OK/Completada
-
-        est_f = st.selectbox("Estado Inicial", opciones_estado, index=len(opciones_estado)-1, on_change=form_callback)
-
-    # Added at user request: field for Comments inside tab2
-    comentarios_f = st.text_area("Comentarios / Observaciones", placeholder="Escribe un comentario detallado sobre esta fuga o inspección...", height=100, on_change=form_callback)
-
-    # Preparamos los datos para la inserción fuera del botón
-    insert_data = {}
-    if coords_dibujadas and n_z:
-        try:
-            # Parsear L_min a float
-            val_lmin = 0.0
-            try:
-                val_str = str(med_f).replace('I/min', '').strip()
-                if '-' in val_str:
-                    p = val_str.split('-')
-                    val_lmin = (float(p[0]) + float(p[1]))/2
-                else:
-                    val_lmin = float(val_str)
-            except: pass
-
-            insert_data = {
-                'x1': coords_dibujadas['x1'],
-                'y1': coords_dibujadas['y1'],
-                'x2': coords_dibujadas['x2'],
-                'y2': coords_dibujadas['y2'],
-                'zona': n_z,
-                'tipo_fuga': t_f,
-                'area': area_p,
-                'ubicacion': tipo_ubicacion,
-                'id_maquina': id_m,
-                'severidad': sev_p,
-                'categoria': cat_f,
-                'l_min': val_lmin,
-                'costo_anual': float(cost_f),
-                'estado': est_f,
-                'comentarios': comentarios_f
-            }
-        except: pass
-
-    # Botón con callback
-    if st.button("🚰📝 Record leak", use_container_width=True, on_click=registrar_fuga_callback, args=(insert_data,)) if (coords_dibujadas and n_z) else None:
-        pass
-    
-    if not (coords_dibujadas and n_z):
-        st.warning("⚠️ Asegúrate de dibujar el área y poner un nombre a la zona.")
+    formulario_ingreso_frag(coords_dibujadas)
 
     st.subheader("📋 Historial de Gestión")
 
@@ -781,13 +780,7 @@ with tabConfig:
                         st.info(f"📝 {str(r['Comentarios'])[:80]}..." if len(str(r['Comentarios'])) > 80 else f"📝 {r['Comentarios']}")
 
                     # Botones de Acción
-                    b1, b2, b3 = st.columns(3)
-                    with b1:
-                        if st.button("✏️", key=f"ed_{idx}", use_container_width=True, help="Editar Registro"): editar_registro(idx, r)
-                    with b2:
-                        if st.button("🖨️", key=f"qr_{idx}", use_container_width=True, help="Generar Código QR"): mostrar_qr(r, base_url_qr)
-                    with b3:
-                        st.button("🗑️", key=f"del_{idx}", use_container_width=True, on_click=borrar_fuga_callback, args=(r['id'],), help="Eliminar Registro")
+                    botones_accion_frag(idx, r, base_url_qr)
     else:
         st.info("No se encontraron registros con los filtros actuales.")
 
