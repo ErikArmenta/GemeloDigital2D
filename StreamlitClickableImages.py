@@ -102,6 +102,9 @@ def cargar_datos():
     return pd.DataFrame()
 
 # --- CALLBACKS ---
+def form_callback():
+    pass
+
 def borrar_fuga_callback(id_registro):
     try:
         supabase.table('fugas').delete().eq('id', id_registro).execute()
@@ -133,7 +136,7 @@ if 'dfZonas' not in st.session_state:
 # --- 3. DIÁLOGO DE EDICIÓN ACTUALIZADO ---
 @st.dialog("✏️ Editar Registro")
 def editar_registro(index, datos_actuales):
-    st.write(f"Modificando ID: {index}")
+    st.write(f"**Modificando ID:** {index} | **ID de Fuga:** {datos_actuales.get('id', 'N/A')} | **Máquina:** {datos_actuales.get('ID_Maquina', 'N/A')}")
     col_ed1, col_ed2 = st.columns(2)
 
     # Identificamos qué fluido tiene este registro
@@ -142,29 +145,29 @@ def editar_registro(index, datos_actuales):
     cat_list_edit = list(dict_edit.keys())
 
     with col_ed1:
-        nuevo_n = st.text_input("Nombre Zona", value=str(datos_actuales['Zona']))
+        nuevo_n = st.text_input("Nombre Zona", value=str(datos_actuales['Zona']), on_change=form_callback)
         cat_val = datos_actuales.get('Categoria', 'Fuga A')
 
         # Validamos que la categoría exista para ese fluido
         idx_ed = cat_list_edit.index(cat_val) if cat_val in cat_list_edit else 0
-        nueva_cat = st.selectbox("Categoría", cat_list_edit, index=idx_ed)
+        nueva_cat = st.selectbox("Categoría", cat_list_edit, index=idx_ed, on_change=form_callback)
 
         nueva_medida = dict_edit[nueva_cat]["l_min"]
-        st.text_input("I/min", value=nueva_medida, disabled=True)
+        st.text_input("I/min", value=nueva_medida, disabled=True, on_change=form_callback)
 
     with col_ed2:
-        nuevo_a = st.text_input("Área", value=str(datos_actuales.get('Area', 'N/A')))
-        nueva_sev = st.select_slider("Severidad", options=["Baja", "Media", "Alta"], value=datos_actuales.get('Severidad', 'Media'))
+        nuevo_a = st.text_input("Área", value=str(datos_actuales.get('Area', 'N/A')), on_change=form_callback)
+        nueva_sev = st.select_slider("Severidad", options=["Baja", "Media", "Alta"], value=datos_actuales.get('Severidad', 'Media'), on_change=form_callback)
 
         nuevo_costo = dict_edit[nueva_cat]["costo"]
-        st.text_input("Costo por año (USD)", value=str(nuevo_costo), disabled=True)
+        st.text_input("Costo por año (USD)", value=str(nuevo_costo), disabled=True, on_change=form_callback)
         ubi_index = 0 if datos_actuales.get('Ubicacion') == "Terrestre" else 1
-        nueva_ubi = st.radio("Tipo de Instalación", ["Terrestre", "Aérea"], index=ubi_index, horizontal=True)
+        nueva_ubi = st.radio("Tipo de Instalación", ["Terrestre", "Aérea"], index=ubi_index, horizontal=True, on_change=form_callback)
 
         nuevo_estado = st.selectbox("Estado", ["En proceso de reparar", "Dañada", "Completada"],
-                                  index=["En proceso de reparar", "Dañada", "Completada"].index(datos_actuales.get('Estado', 'Dañada')) if datos_actuales.get('Estado') in ["En proceso de reparar", "Dañada", "Completada"] else 1)
+                                  index=["En proceso de reparar", "Dañada", "Completada"].index(datos_actuales.get('Estado', 'Dañada')) if datos_actuales.get('Estado') in ["En proceso de reparar", "Dañada", "Completada"] else 1, on_change=form_callback)
 
-    nuevo_comentario = st.text_area("Comentarios / Observaciones", value=str(datos_actuales.get('Comentarios', '')), height=100)
+    nuevo_comentario = st.text_area("Comentarios / Observaciones", value=str(datos_actuales.get('Comentarios', '')), height=100, on_change=form_callback)
 
     if st.button("💾 Guardar Cambios"):
         try:
@@ -641,47 +644,46 @@ with tabConfig:
             st.success(f"Zona capturada: ({int(x1_stored)}, {int(y1_stored)}) - ({int(x2_stored)}, {int(y2_stored)})")
 
     st.markdown("---")
-    # FORMULARIO EXTENDIDO
-    # --- REEMPLAZAR EN TAB_CONFIG ---
+    # --- FORMULARIO EXTENDIDO ---
     col1, col2, col3 = st.columns(3)
     with col1:
-            t_f = st.selectbox("Fluido", list(FLUIDOS.keys()))
+            t_f = st.selectbox("Fluido", list(FLUIDOS.keys()), on_change=form_callback)
 
             # CAMBIO: Reemplazamos Nombre de Zona por Fechas
-            f_inicio = st.date_input("📅 Fecha de Inicio", value=datetime.now())
-            f_termino = st.date_input("📅 Fecha Estimada Término", value=datetime.now())
+            f_inicio = st.date_input("📅 Fecha de Inicio", value=datetime.now(), on_change=form_callback)
+            f_termino = st.date_input("📅 Fecha Estimada Término", value=datetime.now(), on_change=form_callback)
 
             # Convertimos las fechas a texto para guardarlas en GSheets
             n_z = f"{f_inicio.strftime('%d/%m/%Y')} - {f_termino.strftime('%d/%m/%Y')}"
 
             dict_actual = RELACION_FUGAS.get(t_f, RELACION_FUGAS["Aire"])
             cat_list_dinamica = list(dict_actual.keys())
-            cat_f = st.selectbox("Categoría Critica", cat_list_dinamica)
+            cat_f = st.selectbox("Categoría Critica", cat_list_dinamica, on_change=form_callback)
 
     with col2:
-        id_m = st.text_input("ID Equipo / Máquina")
-        area_p = st.text_input("Área Planta")
+        id_m = st.text_input("ID Equipo / Máquina", on_change=form_callback)
+        area_p = st.text_input("Área Planta", on_change=form_callback)
 
         # Estos valores se actualizan solos al cambiar el fluido o la categoría
         med_f = dict_actual[cat_f]["l_min"]
-        st.selectbox("I/min (Estimación)", [med_f], index=0, disabled=True)
+        st.selectbox("I/min (Estimación)", [med_f], index=0, disabled=True, on_change=form_callback)
 
     with col3:
-        sev_p = st.select_slider("Severidad Visual", options=["Baja", "Media", "Alta"], value="Media")
+        sev_p = st.select_slider("Severidad Visual", options=["Baja", "Media", "Alta"], value="Media", on_change=form_callback)
 
         cost_f = dict_actual[cat_f]["costo"]
-        st.selectbox("Costo por año (USD)", [cost_f], index=0, disabled=True)
-        tipo_ubicacion = st.radio("Tipo de Instalación", ["Terrestre", "Aérea"], horizontal=True)
+        st.selectbox("Costo por año (USD)", [cost_f], index=0, disabled=True, on_change=form_callback)
+        tipo_ubicacion = st.radio("Tipo de Instalación", ["Terrestre", "Aérea"], horizontal=True, on_change=form_callback)
 
         # Lógica para Estado según Fluido
         opciones_estado = ["En proceso de reparar", "Dañada", "Completada"]
         if t_f == "Inspección (OK)":
             opciones_estado = ["Completada"] # Si es inspección, por defecto está OK/Completada
 
-        est_f = st.selectbox("Estado Inicial", opciones_estado, index=len(opciones_estado)-1)
+        est_f = st.selectbox("Estado Inicial", opciones_estado, index=len(opciones_estado)-1, on_change=form_callback)
 
     # Added at user request: field for Comments inside tab2
-    comentarios_f = st.text_area("Comentarios / Observaciones", placeholder="Escribe un comentario detallado sobre esta fuga o inspección...", height=100)
+    comentarios_f = st.text_area("Comentarios / Observaciones", placeholder="Escribe un comentario detallado sobre esta fuga o inspección...", height=100, on_change=form_callback)
 
     # Preparamos los datos para la inserción fuera del botón
     insert_data = {}
@@ -1014,6 +1016,22 @@ with tabReporte:
                 min_zoom=-2,
                 max_zoom=4
             )
+            
+            # CSS for Animations in the interactive map export
+            marker_style_export = """
+            <style>
+            @keyframes bounce {
+                0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
+                40% {transform: translateY(-10px);}
+                60% {transform: translateY(-5px);}
+            }
+            .brinca-peppo {
+                animation: bounce 2s infinite;
+            }
+            </style>
+            """
+            m_export.get_root().header.add_child(folium.Element(marker_style_export))
+
             ImageOverlay(
                 image="PlanoHanon.webp",
                 bounds=[[0, 0], [alto_real, ancho_real]],
@@ -1026,11 +1044,48 @@ with tabReporte:
                 factor_y = alto_real / (1200 * (alto_real / ancho_real))
                 cx = (row['x1'] + row['x2']) / 2 * factor_x
                 cy = alto_real - ((row['y1'] + row['y2']) / 2 * factor_y)
+                
                 f_info = FLUIDOS.get(row['TipoFuga'], {"color": "white", "marker": "red", "emoji": "⚠️"})
+                color_sev = {"Alta": "#FF4B4B", "Media": "#FFA500", "Baja": "#28A745"}.get(row['Severidad'], "#333")
+                ubi = row.get('Ubicacion', 'Terrestre')
+                ubi_emoji = "🚜" if ubi == "Terrestre" else "☁️"
+                
+                hover_html_export = f"""
+                <div style="background-color:#1d2129; color:white; padding:10px; border-radius:8px; border-left:5px solid {f_info['color']}; min-width:150px;">
+                    <b>{f_info['emoji']} {row['Area']}</b><br>
+                    <span style="color:#bdc3c7; font-size:0.85em;">{ubi_emoji} Instalación: {ubi}</span><br>
+                    <span style="color:{color_sev}; font-size:0.9em;">Severidad: {row['Severidad']}</span><br>
+                    <span style="color:#bdc3c7; font-size:0.85em;"><i>{str(row.get('Comentarios', ''))[:50] + '...' if len(str(row.get('Comentarios', ''))) > 50 else str(row.get('Comentarios', ''))}</i></span>
+                </div>"""
+
+                popup_content_export = f"""
+                <div style="font-family: 'Segoe UI', sans-serif; color: #333; min-width: 250px;">
+                    <h4 style="margin:0 0 10px 0; color:{f_info['color']}; border-bottom: 2px solid {color_sev};">📋 Ficha Técnica</h4>
+                    <table style="width:100%; font-size: 13px; border-spacing: 0 5px;">
+                        <tr><td><b>ID Máquina:</b></td><td><b>{row.get('ID_Maquina', 'N/A')}</b></td></tr>
+                        <tr><td><b>Área de Planta:</b></td><td>{row['Area']}</td></tr>
+                        <tr><td><b>Instalación:</b></td><td>{ubi_emoji} {ubi}</td></tr>
+                        <tr><td><b>Estado:</b></td><td><b>{row.get('Estado', 'N/A')}</b></td></tr>
+                        <tr><td><b>Categoria:</b></td><td>{row.get('Categoria', 'N/A')}</td></tr>
+                        <tr><td><b>Caudal:</b></td><td>{row.get('L_min', 'N/A')} I/min</td></tr>
+                        <tr><td><b>Costo/Año:</b></td><td style="color:#d9534f; font-weight:bold;">${row.get('CostoAnual', '0')} USD</td></tr>
+                        <tr><td><b>Severidad:</b></td><td style="color:{color_sev}; font-weight:bold;">{row['Severidad']}</td></tr>
+                        <tr><td><b>Fechas:</b></td><td>{row['Zona']}</td></tr>
+                        <tr><td colspan="2" style="border-top:1px solid #ddd; padding-top:5px;"><b>Comentarios:</b><br/>{row.get('Comentarios', '')}</td></tr>
+                    </table>
+                </div>
+                """
+
+                clase_css_export = "brinca-peppo" if row['Severidad'] == "Alta" else ""
+                icono_mapa_export = "info-sign"
+                if row['Estado'] == "Completada" or row['TipoFuga'] == "Inspección (OK)":
+                    icono_mapa_export = "ok-sign"
+
                 folium.Marker(
                     location=[cy, cx],
-                    popup=f"{row['Area']} - {row['TipoFuga']}",
-                    icon=folium.Icon(color=f_info['marker'], icon="info-sign")
+                    popup=folium.Popup(popup_content_export, max_width=350),
+                    tooltip=folium.Tooltip(hover_html_export),
+                    icon=folium.Icon(color=f_info['marker'], icon=icono_mapa_export, extra_params=f'class="{clase_css_export}"')
                 ).add_to(m_export)
 
             m_export.save("mapa_interactivo.html")
