@@ -11,8 +11,7 @@ from folium.raster_layers import ImageOverlay
 import io
 import altair as alt
 from datetime import datetime
-
-
+from streamlit_option_menu import option_menu
 
 # --- 1. CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
@@ -368,10 +367,102 @@ else:
 if busqueda_fecha and not df_filtrado.empty:
     df_filtrado = df_filtrado[df_filtrado['Zona'].str.contains(busqueda_fecha, case=False, na=False)]
 
-# --- 6. TABS ---
-tabMapa, tabConfig, tabReporte = st.tabs(["📍 Mapa", "⚙️ Gestión", "📊 Reporte"])
+# --- FRAGMENTS OPTIMIZACIÓN ---
+@st.fragment
+def boton_plano_frag():
+    if st.button("🔍 Obtener Plano 16K", use_container_width=True):
+        dialogo_descarga_plano()
 
-with tabMapa:
+@st.fragment
+def formulario_ingreso_frag(coords_dibujadas):
+    # --- FORMULARIO EXTENDIDO ---
+    col1, col2, col3 = st.columns(3)
+    with col1:
+            t_f = st.selectbox("Fluido", list(FLUIDOS.keys()))
+            f_inicio = st.date_input("📅 Fecha de Inicio", value=datetime.now())
+            f_termino = st.date_input("📅 Fecha Estimada Término", value=datetime.now())
+            n_z = f"{f_inicio.strftime('%d/%m/%Y')} - {f_termino.strftime('%d/%m/%Y')}"
+            dict_actual = RELACION_FUGAS.get(t_f, RELACION_FUGAS["Aire"])
+            cat_list_dinamica = list(dict_actual.keys())
+            cat_f = st.selectbox("Categoría Critica", cat_list_dinamica)
+
+    with col2:
+        id_m = st.text_input("ID Equipo / Máquina")
+        area_p = st.text_input("Área Planta")
+        med_f = dict_actual[cat_f]["l_min"]
+        st.selectbox("I/min (Estimación)", [med_f], index=0, disabled=True)
+
+    with col3:
+        sev_p = st.select_slider("Severidad Visual", options=["Baja", "Media", "Alta"], value="Media")
+        cost_f = dict_actual[cat_f]["costo"]
+        st.selectbox("Costo por año (USD)", [cost_f], index=0, disabled=True)
+        tipo_ubicacion = st.radio("Tipo de Instalación", ["Terrestre", "Aérea"], horizontal=True)
+        opciones_estado = ["En proceso de reparar", "Dañada", "Completada"]
+        if t_f == "Inspección (OK)":
+            opciones_estado = ["Completada"] 
+        est_f = st.selectbox("Estado Inicial", opciones_estado, index=len(opciones_estado)-1)
+
+    comentarios_f = st.text_area("Comentarios / Observaciones", placeholder="Escribe un comentario detallado sobre esta fuga o inspección...", height=100)
+
+    insert_data = {}
+    if coords_dibujadas and n_z:
+        try:
+            val_lmin = 0.0
+            try:
+                val_str = str(med_f).replace('I/min', '').strip()
+                if '-' in val_str:
+                    p = val_str.split('-')
+                    val_lmin = (float(p[0]) + float(p[1]))/2
+                else:
+                    val_lmin = float(val_str)
+            except: pass
+            insert_data = {
+                'x1': coords_dibujadas['x1'], 'y1': coords_dibujadas['y1'],
+                'x2': coords_dibujadas['x2'], 'y2': coords_dibujadas['y2'],
+                'zona': n_z, 'tipo_fuga': t_f, 'area': area_p, 'ubicacion': tipo_ubicacion,
+                'id_maquina': id_m, 'severidad': sev_p, 'categoria': cat_f,
+                'l_min': val_lmin, 'costo_anual': float(cost_f), 'estado': est_f,
+                'comentarios': comentarios_f
+            }
+        except: pass
+
+    if coords_dibujadas and n_z:
+        if st.button("🚰📝 Record leak", use_container_width=True):
+            registrar_fuga_callback(insert_data)
+            st.rerun()
+    else:
+        st.warning("⚠️ Asegúrate de dibujar el área y poner un nombre a la zona.")
+
+@st.fragment
+def botones_accion_frag(idx, r, base_url_qr):
+    b1, b2, b3 = st.columns(3)
+    with b1:
+        if st.button("✏️", key=f"ed_{idx}", use_container_width=True, help="Editar Registro"): 
+            editar_registro(idx, r)
+    with b2:
+        if st.button("🖨️", key=f"qr_{idx}", use_container_width=True, help="Generar Código QR"): 
+            mostrar_qr(r, base_url_qr)
+    with b3:
+        if st.button("🗑️", key=f"del_{idx}", use_container_width=True, help="Eliminar Registro"):
+            borrar_fuga_callback(r['id'])
+            st.rerun()
+
+# --- 6. NAVEGACIÓN ---
+selected_tab = option_menu(
+    menu_title=None,
+    options=["📍 Mapa", "⚙️ Gestión", "📊 Reporte"],
+    icons=["geo-alt-fill", "gear-fill", "bar-chart-fill"],
+    default_index=0,
+    orientation="horizontal",
+    styles={
+        "container": {"padding": "0!important", "background-color": "#161a22", "border": "1px solid #2d323d", "border-radius": "15px", "margin-bottom": "20px"},
+        "icon": {"color": "#a8b2c1", "font-size": "18px"},
+        "nav-link": {"font-size": "16px", "text-align": "center", "margin":"0px", "--hover-color": "#1d2129", "color": "#fafafa"},
+        "nav-link-selected": {"background-color": "#5271ff", "color": "white", "font-weight": "bold", "border-radius": "10px"},
+    }
+)
+
+if selected_tab == "📍 Mapa":
     # DEBUG: Mostrar qué está llegando realmente
     # st.write("Datos cargados:", len(df_filtrado))
     # st.dataframe(df_filtrado.head())
@@ -535,87 +626,7 @@ with tabMapa:
 
 
 
-# --- FRAGMENTS OPTIMIZACIÓN ---
-@st.fragment
-def boton_plano_frag():
-    if st.button("🔍 Obtener Plano 16K", use_container_width=True):
-        dialogo_descarga_plano()
-
-@st.fragment
-def formulario_ingreso_frag(coords_dibujadas):
-    # --- FORMULARIO EXTENDIDO ---
-    col1, col2, col3 = st.columns(3)
-    with col1:
-            t_f = st.selectbox("Fluido", list(FLUIDOS.keys()))
-            f_inicio = st.date_input("📅 Fecha de Inicio", value=datetime.now())
-            f_termino = st.date_input("📅 Fecha Estimada Término", value=datetime.now())
-            n_z = f"{f_inicio.strftime('%d/%m/%Y')} - {f_termino.strftime('%d/%m/%Y')}"
-            dict_actual = RELACION_FUGAS.get(t_f, RELACION_FUGAS["Aire"])
-            cat_list_dinamica = list(dict_actual.keys())
-            cat_f = st.selectbox("Categoría Critica", cat_list_dinamica)
-
-    with col2:
-        id_m = st.text_input("ID Equipo / Máquina")
-        area_p = st.text_input("Área Planta")
-        med_f = dict_actual[cat_f]["l_min"]
-        st.selectbox("I/min (Estimación)", [med_f], index=0, disabled=True)
-
-    with col3:
-        sev_p = st.select_slider("Severidad Visual", options=["Baja", "Media", "Alta"], value="Media")
-        cost_f = dict_actual[cat_f]["costo"]
-        st.selectbox("Costo por año (USD)", [cost_f], index=0, disabled=True)
-        tipo_ubicacion = st.radio("Tipo de Instalación", ["Terrestre", "Aérea"], horizontal=True)
-        opciones_estado = ["En proceso de reparar", "Dañada", "Completada"]
-        if t_f == "Inspección (OK)":
-            opciones_estado = ["Completada"] 
-        est_f = st.selectbox("Estado Inicial", opciones_estado, index=len(opciones_estado)-1)
-
-    comentarios_f = st.text_area("Comentarios / Observaciones", placeholder="Escribe un comentario detallado sobre esta fuga o inspección...", height=100)
-
-    insert_data = {}
-    if coords_dibujadas and n_z:
-        try:
-            val_lmin = 0.0
-            try:
-                val_str = str(med_f).replace('I/min', '').strip()
-                if '-' in val_str:
-                    p = val_str.split('-')
-                    val_lmin = (float(p[0]) + float(p[1]))/2
-                else:
-                    val_lmin = float(val_str)
-            except: pass
-            insert_data = {
-                'x1': coords_dibujadas['x1'], 'y1': coords_dibujadas['y1'],
-                'x2': coords_dibujadas['x2'], 'y2': coords_dibujadas['y2'],
-                'zona': n_z, 'tipo_fuga': t_f, 'area': area_p, 'ubicacion': tipo_ubicacion,
-                'id_maquina': id_m, 'severidad': sev_p, 'categoria': cat_f,
-                'l_min': val_lmin, 'costo_anual': float(cost_f), 'estado': est_f,
-                'comentarios': comentarios_f
-            }
-        except: pass
-
-    if coords_dibujadas and n_z:
-        if st.button("🚰📝 Record leak", use_container_width=True):
-            registrar_fuga_callback(insert_data)
-            st.rerun()
-    else:
-        st.warning("⚠️ Asegúrate de dibujar el área y poner un nombre a la zona.")
-
-@st.fragment
-def botones_accion_frag(idx, r, base_url_qr):
-    b1, b2, b3 = st.columns(3)
-    with b1:
-        if st.button("✏️", key=f"ed_{idx}", use_container_width=True, help="Editar Registro"): 
-            editar_registro(idx, r)
-    with b2:
-        if st.button("🖨️", key=f"qr_{idx}", use_container_width=True, help="Generar Código QR"): 
-            mostrar_qr(r, base_url_qr)
-    with b3:
-        if st.button("🗑️", key=f"del_{idx}", use_container_width=True, help="Eliminar Registro"):
-            borrar_fuga_callback(r['id'])
-            st.rerun()
-
-with tabConfig:
+elif selected_tab == "⚙️ Gestión":
     st.markdown("##### 1. Referencia de Alta Precisión (16K)")
 
     col_btn_1, col_btn_2 = st.columns([1, 2])
@@ -784,7 +795,7 @@ with tabConfig:
     else:
         st.info("No se encontraron registros con los filtros actuales.")
 
-with tabReporte:
+elif selected_tab == "📊 Reporte":
     st.subheader("📊 Panel de Control Operativo")
 
     # --- TODO DENTRO DE ESTE IF ---
