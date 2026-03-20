@@ -264,7 +264,12 @@ RELACION_FUGAS = {
     },
     # --- NUEVO ESTADO: INSPECCIÓN (OK) ---
     "Inspección (OK)": {
-        "Sin Fuga": {"l_min": "0", "costo": 0}
+        "Sin Fuga": {"l_min": "0", "costo": 0},
+        "Sin Fuga (Aire)": {"l_min": "0", "costo": 0},
+        "Sin Fuga (Gas Natural)": {"l_min": "0", "costo": 0},
+        "Sin Fuga (Agua)": {"l_min": "0", "costo": 0},
+        "Sin Fuga (Helio)": {"l_min": "0", "costo": 0},
+        "Sin Fuga (Aceite)": {"l_min": "0", "costo": 0}
     }
 }
 
@@ -448,12 +453,18 @@ def botones_accion_frag(idx, r, base_url_qr):
             st.rerun()
 
 # --- 6. NAVEGACIÓN ---
+def nav_callback(*args, **kwargs):
+    # Callback para la selección del menú y evitar recargas completas pesadas
+    pass
+
 selected_tab = option_menu(
     menu_title=None,
     options=["Mapa", "Gestión", "Reporte"],
     icons=["geo-alt-fill", "gear-fill", "bar-chart-fill"],
     default_index=0,
     orientation="horizontal",
+    on_change=nav_callback,
+    key="menu_navegacion",
     styles={
         "container": {"padding": "0!important", "background-color": "#161a22", "border": "1px solid #2d323d", "border-radius": "15px", "margin-bottom": "20px"},
         "icon": {"color": "#a8b2c1", "font-size": "18px"},
@@ -843,21 +854,56 @@ elif selected_tab == "Reporte":
         texto = alt.Chart(pd.DataFrame({'t': [f'{porcentaje:.0f}%']})).mark_text(fontSize=20, fontWeight='bold', color='white').encode(text='t:N')
         g4 = (anillo + texto).properties(width=180, height=250, title="Eficiencia")
 
-        # --- CORRECCIÓN G5: COBERTURA (Anillo con % Central) ---
+        # --- CORRECCIÓN G5: COBERTURA (Anillo con % Central y Colores Dinámicos) ---
         n_inspecciones = len(df_filtrado[df_filtrado['TipoFuga'] == "Inspección (OK)"])
         n_fugas_activas = len(df_filtrado[df_filtrado['Estado'].isin(['Dañada', 'En proceso de reparar'])])
         total_cobertura = n_inspecciones + n_fugas_activas
         pct_cobertura = (n_inspecciones / total_cobertura * 100) if total_cobertura > 0 else 0
 
+        # Construir slices dinámicos filtrando ceros
+        categorias_pie = []
+        valores_pie = []
+        colores_pie = []
+
+        if n_fugas_activas > 0:
+            categorias_pie.append('Fugas Detectadas')
+            valores_pie.append(n_fugas_activas)
+            colores_pie.append('#d9534f') # Rojo para fugas activas
+
+        color_map_inspeccion = {
+            "Sin Fuga": FLUIDOS.get("Inspección (OK)", {}).get("color", "#28A745"),
+            "Sin Fuga (Aire)": FLUIDOS.get("Aire", {}).get("color", "#0000FF"),
+            "Sin Fuga (Gas Natural)": FLUIDOS.get("Gas Natural", {}).get("color", "#FFA500"),
+            "Sin Fuga (Agua)": FLUIDOS.get("Agua", {}).get("color", "#00FFFF"),
+            "Sin Fuga (Helio)": FLUIDOS.get("Helio", {}).get("color", "#FF00FF"),
+            "Sin Fuga (Aceite)": FLUIDOS.get("Aceite", {}).get("color", "#FFFF00")
+        }
+
+        df_inspecciones = df_filtrado[df_filtrado['TipoFuga'] == "Inspección (OK)"]
+        if not df_inspecciones.empty:
+            for cat, count in df_inspecciones['Categoria'].value_counts().items():
+                if count > 0:
+                    categorias_pie.append(str(cat))
+                    valores_pie.append(count)
+                    colores_pie.append(color_map_inspeccion.get(str(cat), "#28A745"))
+
+        # Prevenir gráficas vacías fallidas
+        if not categorias_pie:
+            categorias_pie = ['Sin Datos']
+            valores_pie = [1]
+            colores_pie = ['#333333']
+
         data_pie = pd.DataFrame({
-            'Categoria': ['Inspeccionado (OK)', 'Fugas Detectadas'],
-            'Valor': [n_inspecciones, n_fugas_activas]
+            'Categoria': categorias_pie,
+            'Valor': valores_pie,
+            'Color': colores_pie
         })
 
         base_g5 = alt.Chart(data_pie).encode(
             theta=alt.Theta("Valor:Q", stack=True),
-            color=alt.Color("Categoria:N", scale=alt.Scale(domain=['Inspeccionado (OK)', 'Fugas Detectadas'],
-                                                          range=['#28a745', '#d9534f']), legend=None)
+            color=alt.Color("Color:N", scale=None, legend=None),
+            detail='Categoria:N',
+            tooltip=['Categoria', 'Valor']
         )
 
         anillo_g5 = base_g5.mark_arc(innerRadius=45)
