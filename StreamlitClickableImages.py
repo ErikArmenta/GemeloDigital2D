@@ -450,7 +450,7 @@ def botones_accion_frag(idx, r, base_url_qr):
 # --- 6. NAVEGACIÓN ---
 selected_tab = option_menu(
     menu_title=None,
-    options=["📍 Mapa", "⚙️ Gestión", "📊 Reporte"],
+    options=["Mapa", "Gestión", "Reporte"],
     icons=["geo-alt-fill", "gear-fill", "bar-chart-fill"],
     default_index=0,
     orientation="horizontal",
@@ -462,7 +462,7 @@ selected_tab = option_menu(
     }
 )
 
-if selected_tab == "📍 Mapa":
+if selected_tab == "Mapa":
     # DEBUG: Mostrar qué está llegando realmente
     # st.write("Datos cargados:", len(df_filtrado))
     # st.dataframe(df_filtrado.head())
@@ -626,7 +626,7 @@ if selected_tab == "📍 Mapa":
 
 
 
-elif selected_tab == "⚙️ Gestión":
+elif selected_tab == "Gestión":
     st.markdown("##### 1. Referencia de Alta Precisión (16K)")
 
     col_btn_1, col_btn_2 = st.columns([1, 2])
@@ -795,7 +795,7 @@ elif selected_tab == "⚙️ Gestión":
     else:
         st.info("No se encontraron registros con los filtros actuales.")
 
-elif selected_tab == "📊 Reporte":
+elif selected_tab == "Reporte":
     st.subheader("📊 Panel de Control Operativo")
 
     # --- TODO DENTRO DE ESTE IF ---
